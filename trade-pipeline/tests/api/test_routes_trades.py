@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from sqlalchemy import insert
 
-from trade_pipeline.common.db_models import Trade
+from trade_pipeline.common.db_models import FeatureFlag, Trade
 
 
 async def _seed_trade(app, **overrides):
@@ -70,3 +70,48 @@ async def test_trades_respects_limit(app, client, demo_credentials):
 
     assert resp.status_code == 200
     assert len(resp.json()) == 2
+
+
+async def test_enrichment_is_null_when_flag_disabled(app, client, demo_credentials):
+    await _seed_trade(app, trade_id="t-1")
+    token = await _login(client, demo_credentials)
+
+    resp = await client.get("/trades", headers={"Authorization": f"Bearer {token}"})
+
+    assert resp.json()[0]["enrichment"] is None
+
+
+async def test_enrichment_is_attached_when_flag_enabled_via_admin_api(
+    app, client, demo_credentials
+):
+    await _seed_trade(app, trade_id="t-1")
+    token = await _login(client, demo_credentials)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    await client.patch(
+        "/admin/feature-flags/enrichment_enabled", json={"enabled": True}, headers=headers
+    )
+    resp = await client.get("/trades", headers=headers)
+
+    enrichment = resp.json()[0]["enrichment"]
+    assert enrichment is not None
+    assert enrichment["risk_score"]["data"] == {"score": 42}
+    assert enrichment["sentiment"]["data"] == {"index": "neutral"}
+
+
+async def test_enrichment_reflects_a_direct_db_row_update(app, client, demo_credentials):
+    """The feature_flags table is the actual source of truth — flipping it
+    with a direct DB write (no admin API call) must take effect on the very
+    next request, same as it would for an operator running raw SQL.
+    """
+    await _seed_trade(app, trade_id="t-1")
+    token = await _login(client, demo_credentials)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    session_factory = app.state.async_session_factory
+    async with session_factory() as session:
+        session.add(FeatureFlag(name="enrichment_enabled", enabled=True))
+        await session.commit()
+
+    resp = await client.get("/trades", headers=headers)
+    assert resp.json()[0]["enrichment"] is not None

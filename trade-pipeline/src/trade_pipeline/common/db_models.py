@@ -34,3 +34,14 @@ class Trade(Base):
     # Python-side default only (no server_default): every insert already goes
     # through the ORM (postgres_sink.write_trade), so this is always set.
     archived: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+
+
+class FeatureFlag(Base):
+    """Feature flag state — toggled via a DB update (or the /admin/feature-flags
+    API), not env vars/redeploys. See common/feature_flags.py.
+    """
+
+    __tablename__ = "feature_flags"
+
+    name: Mapped[str] = mapped_column(String(64), primary_key=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
