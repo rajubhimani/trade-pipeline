@@ -198,3 +198,24 @@ against the real compose services), but running the app itself stays on `uv run`
 the fast edit-run development loop this project already relies on. Wiring the app image into compose
 as an always-running service is a natural next step if that loop ever needs to change, not required
 to answer "does this project have a working Dockerfile."
+
+### DLQ publish-then-commit, not the original skip-without-commit
+The original consumer failure handling (log, skip, don't commit) is correct for *transient* failures —
+Kafka redelivers the message from the last committed offset on restart, and it eventually succeeds.
+It's wrong for *permanent* failures (a message that will never process successfully), which just
+generate the same failure forever, on every restart. Publishing the failed message's envelope to a
+`{topic}-dlq` topic and then committing the original offset anyway captures it durably (a human or a
+replay tool can act on it later) while letting the pipeline keep moving — matching the plan's own
+system-design guidance ("Kafka broker down → consumer lag alert → DLQ fills → ops page"). If the DLQ
+publish itself fails, the original offset is deliberately *not* committed — falling back to the old
+redeliver-on-restart behavior is safer than silently losing the message when the DLQ is unavailable.
+
+### Minimal React (Vite, plain JS, no extra libraries) for the operational dashboard
+The dashboard's actual scope — a login form, a trades table, a feature-flag toggle — has no
+state-management complexity, component reuse, or routing that *requires* React; vanilla JS would be
+technically sufficient. Chosen anyway because this is an interview-prep project where demonstrating
+current, idiomatic React usage has real value, and because it's the common real-world default for
+anything UI-facing even when the first version is simple. Kept deliberately minimal to match the
+actual scope: Vite's plain JS template (no TypeScript, no router, no state-management library, no UI
+component library), a single component file calling the already-built, already-tested JSON API
+endpoints directly via `fetch()`.

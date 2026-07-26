@@ -124,5 +124,45 @@ control flow:
   message's own offset*, not the consumer's committed offset — see
   [DECISIONS.md](../DECISIONS.md) "Consumer lag measured against the current message's offset."
 
+## Code references — dead-letter queue
+
+**File**: [`src/trade_pipeline/consumer/dlq.py`](../../trade-pipeline/src/trade_pipeline/consumer/dlq.py)
+**Feature doc**: [docs/features/dead-letter-queue.md](../features/dead-letter-queue.md)
+**Tests**: [`tests/consumer/test_dlq.py`](../../trade-pipeline/tests/consumer/test_dlq.py) (4 tests) +
+3 `run_consumer` wiring tests in
+[`test_dedup_consumer.py`](../../trade-pipeline/tests/consumer/test_dedup_consumer.py)
+
+```mermaid
+flowchart TD
+    Fail[process_message raises]
+    HasDlq{dlq_producer configured?}
+    Send["dlq_producer.send(message, error)<br/>→ {topic}-dlq"]
+    SendOk{publish succeeded?}
+    Commit[commit original offset<br/>— pipeline keeps moving]
+    NoCommit[do NOT commit<br/>— Kafka redelivers on restart]
+
+    Fail --> HasDlq
+    HasDlq -->|no| NoCommit
+    HasDlq -->|yes| Send --> SendOk
+    SendOk -->|yes| Commit
+    SendOk -->|no, DlqPublishError| NoCommit
+```
+
+- [`DlqProducer.send(message, error)`](../../trade-pipeline/src/trade_pipeline/consumer/dlq.py) —
+  synchronous (flushes before returning), so the caller only commits the original offset after a
+  *confirmed* publish, not an in-flight one. Publishes an envelope (error type/message, original
+  topic/partition/offset, raw payload, `failed_at`) to `{topic}-dlq`.
+  [`DlqPublishError`](../../trade-pipeline/src/trade_pipeline/consumer/dlq.py) propagates if the DLQ
+  publish itself fails — the original offset is deliberately *not* committed in that case, falling
+  back to the old redeliver-on-restart behavior rather than losing the message silently.
+  [`run_consumer`](../../trade-pipeline/src/trade_pipeline/consumer/dedup_consumer.py)'s
+  `dlq_producer` parameter is optional — `None` preserves the exact pre-DLQ behavior, so this is a
+  backward-compatible addition, not a breaking change to the failure path.
+- [`replay_dlq(...)`](../../trade-pipeline/src/trade_pipeline/consumer/dlq.py) — a deliberate batch
+  tool (`python -m trade_pipeline.consumer.dlq --topic trades`), not a background service: reads
+  envelopes off `{topic}-dlq` and re-publishes each one's original payload to its original topic,
+  stopping as soon as no more messages are currently pending. Commits its own consumer-group offset on
+  the DLQ topic as it replays, so re-running the tool doesn't replay the same message twice.
+
 ---
 [Index](README.md) · ← Previous: [Producer](02-producer.md) · Next → [API & auth](04-api-and-auth.md)

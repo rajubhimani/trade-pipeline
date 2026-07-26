@@ -32,6 +32,9 @@ consumer_lag = Gauge(
     "Kafka consumer lag (high watermark - committed-so-far offset) per partition",
     labelnames=("topic", "partition"),
 )
+dlq_total = Counter(
+    "consumer_dlq_total", "Messages published to the dead-letter queue after a processing failure"
+)
 
 
 def start_metrics_server(port: int) -> None:
@@ -52,6 +55,10 @@ def record_dedup_result(*, is_duplicate: bool) -> None:
         dedup_hits_total.inc()
     else:
         dedup_misses_total.inc()
+
+
+def record_dlq_publish() -> None:
+    dlq_total.inc()
 
 
 def observe_consumer_lag(

@@ -17,6 +17,7 @@ from confluent_kafka import Consumer, Message
 from redis import Redis
 
 from trade_pipeline.common.models import TradeEvent
+from trade_pipeline.consumer.dlq import DlqProducer, DlqPublishError
 from trade_pipeline.observability import metrics
 
 logger = logging.getLogger(__name__)
@@ -88,6 +89,7 @@ def run_consumer(
     redis_client: Redis,
     dedup_ttl_seconds: int,
     sink: SinkWriter,
+    dlq_producer: DlqProducer | None = None,
     max_messages: int | None = None,
 ) -> DedupStats:
     consumer = Consumer(
@@ -113,9 +115,23 @@ def run_consumer(
 
             try:
                 should_commit = dedup.process_message(message)
-            except Exception:
-                logger.exception("failed to process message, not committing offset")
-                continue  # do not commit — message will be redelivered
+            except Exception as exc:
+                logger.exception("failed to process message")
+                if dlq_producer is None:
+                    continue  # no DLQ configured — old behavior, redeliver on restart
+
+                try:
+                    dlq_producer.send(message, exc)
+                    metrics.record_dlq_publish()
+                except DlqPublishError:
+                    logger.exception("failed to publish to DLQ, not committing offset")
+                    continue  # DLQ itself unavailable — safer to redeliver than lose it
+
+                # Published to the DLQ successfully — commit past it so a
+                # permanently-bad message doesn't get reprocessed forever.
+                consumer.commit(message=message)
+                handled += 1
+                continue
 
             metrics.observe_consumer_lag(consumer, message)
             if should_commit:
@@ -130,6 +146,7 @@ def run_consumer(
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     from trade_pipeline.common.config import load_config
+    from trade_pipeline.consumer.dlq import make_dlq_producer
     from trade_pipeline.consumer.postgres_sink import init_schema, make_engine, make_sink
 
     config = load_config()
@@ -145,5 +162,6 @@ if __name__ == "__main__":
         redis_client=redis_client,
         dedup_ttl_seconds=config.redis.dedup_ttl_seconds,
         sink=make_sink(engine),
+        dlq_producer=make_dlq_producer(config.kafka.bootstrap_servers),
     )
     logger.info("processed=%d duplicates=%d", stats.processed, stats.duplicates)
