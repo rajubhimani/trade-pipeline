@@ -21,6 +21,7 @@ dependencies = [
     "cryptography>=43",
     "structlog>=24.4",
     "prometheus-fastapi-instrumentator>=7.0",
+    "prometheus-client>=0.21",
     "tenacity>=9.0",
     "aiohttp>=3.10",
     "temporalio>=1.9",

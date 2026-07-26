@@ -61,7 +61,8 @@ trade-pipeline/
     api/            — Component 3: FastAPI + auth           → page 4
     enrichment/     — Component 4: hand-rolled + Temporal   → page 5
     common/         — shared models, config, db_models, version_compat_demo → pages 3, 6
-    dagster_pipeline/, observability/ — scaffolded, not yet built (see tasks/backlog)
+    observability/  — Component 5: consumer Prometheus metrics → page 3
+    dagster_pipeline/ — scaffolded, not yet built (see tasks/backlog)
   tests/                          — mirrors src/ layout exactly → page 7
 ```
 

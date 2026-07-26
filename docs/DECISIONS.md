@@ -66,3 +66,10 @@ Redis-backed pure-ASGI `RateLimitMiddleware` (`api/rate_limit.py`) using fixed-w
 also Redis-backed rather than slowapi's default in-process storage, so it's correct across multiple
 API worker processes rather than under-counting, which is a real limitation worth knowing about even
 if this project only runs one worker.
+
+### Consumer lag measured against the current message's offset, not the committed offset
+`observe_consumer_lag` computes `high_watermark - 1 - message.offset()` at the point a message is
+processed, not against the consumer's last-committed offset. The committed offset would also reflect
+this consumer's own commit-batching/timing behavior, muddying "is the pipeline falling behind" with
+"how does this consumer commit" — measuring against the message actually being handled right now
+gives a cleaner, more directly interpretable signal that moves smoothly with real throughput.

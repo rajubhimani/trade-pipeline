@@ -46,19 +46,18 @@ sequenceDiagram
 
 ## Code references — dedup logic
 
-- [`DedupConsumer.is_duplicate(event)`](../../trade-pipeline/src/trade_pipeline/consumer/dedup_consumer.py#L51) —
+- [`DedupConsumer.is_duplicate(event)`](../../trade-pipeline/src/trade_pipeline/consumer/dedup_consumer.py#L61) —
   the atomic check: `redis.set(key, 1, nx=True, ex=ttl)`. This is the plan's `SETNX ... EX 300`
   spelled with redis-py's current API (see [DECISIONS.md](../DECISIONS.md) "Redis SETNX for dedup").
-- [`DedupConsumer.process_message(message)`](../../trade-pipeline/src/trade_pipeline/consumer/dedup_consumer.py#L51) —
+- [`DedupConsumer.process_message(message)`](../../trade-pipeline/src/trade_pipeline/consumer/dedup_consumer.py#L68) —
   the sequencing: dedup check → sink write → return whether to commit. Duplicates are committed past
   immediately (nothing to redo); a real write only commits *after* it succeeds.
-- [`run_consumer(...)`](../../trade-pipeline/src/trade_pipeline/consumer/dedup_consumer.py#L80) — the
+- [`run_consumer(...)`](../../trade-pipeline/src/trade_pipeline/consumer/dedup_consumer.py#L84) — the
   real Kafka wiring: `enable.auto.commit: False`, and `consumer.commit(message=message)` is only
   called when `process_message` returns without raising. This is the load-bearing behavior for
   at-least-once delivery.
-- [`DedupStats`](../../trade-pipeline/src/trade_pipeline/consumer/dedup_consumer.py#L41) — tracks
-  `processed`/`duplicates` counts, exposes `dedup_hit_rate` for the (not-yet-built) observability
-  layer.
+- [`DedupStats`](../../trade-pipeline/src/trade_pipeline/consumer/dedup_consumer.py#L42) — tracks
+  `processed`/`duplicates` counts, exposes `dedup_hit_rate`.
 
 ## Code references — Postgres sink
 
@@ -75,6 +74,28 @@ sequenceDiagram
   unique constraint on `(broker_id, trade_id)` is a defense-in-depth backstop behind Redis dedup;
   raised (not silently swallowed) if the two dedup layers ever disagree, since that's worth alerting
   on.
+
+## Code references — observability
+
+**File**: [`src/trade_pipeline/observability/metrics.py`](../../trade-pipeline/src/trade_pipeline/observability/metrics.py)
+**Feature doc**: [docs/features/observability.md](../features/observability.md)
+**Tests**: [`tests/observability/test_metrics.py`](../../trade-pipeline/tests/observability/test_metrics.py) (7 tests)
+
+The consumer is its own process with no FastAPI app to hang `/metrics` off of (the API gets that for
+free from `prometheus-fastapi-instrumentator`, see [page 4](04-api-and-auth.md)) — this module gives it
+one via `prometheus_client.start_http_server`, wired into `DedupConsumer` without touching its tested
+control flow:
+
+- [`record_dedup_result`](../../trade-pipeline/src/trade_pipeline/observability/metrics.py) — called
+  from `is_duplicate` above; increments `dedup_hits_total`/`dedup_misses_total`.
+- [`time_write`](../../trade-pipeline/src/trade_pipeline/observability/metrics.py) — a context manager
+  wrapping the sink call in `process_message`, feeding `consumer_write_latency_seconds` (records the
+  Postgres write specifically, not the whole message including the Redis round trip).
+- [`observe_consumer_lag`](../../trade-pipeline/src/trade_pipeline/observability/metrics.py) — called
+  from `run_consumer` (not `process_message` — it needs the real `confluent_kafka.Consumer`/`Message`,
+  which the unit-tested `DedupConsumer` methods don't touch). Measures lag against the *current
+  message's own offset*, not the consumer's committed offset — see
+  [DECISIONS.md](../DECISIONS.md) "Consumer lag measured against the current message's offset."
 
 ---
 [Index](README.md) · ← Previous: [Producer](02-producer.md) · Next → [API & auth](04-api-and-auth.md)
