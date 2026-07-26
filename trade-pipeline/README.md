@@ -145,17 +145,25 @@ Login with the demo account (`demo` / `trade-pipeline-demo` — see `api/auth/us
 
 ### Running via Docker instead
 
-A [`Dockerfile`](Dockerfile) builds a single image shared by every entrypoint — `docker-compose.yml`
-still runs infra only (see [DECISIONS.md](../docs/DECISIONS.md)), so run the app container(s)
-alongside it explicitly:
+One command brings up the entire system — infra (Kafka, Redis, Postgres) plus the app's own
+`producer`/`consumer`/`api`/`dagster` services, all built from the one [`Dockerfile`](Dockerfile)
+(entrypoint picked per service via `command:` — see [DECISIONS.md](../docs/DECISIONS.md)):
 
 ```bash
-docker build -t trade-pipeline .
-docker run --rm --network trade-pipeline_default \
-  -e KAFKA_BOOTSTRAP_SERVERS=kafka:29092 \
-  trade-pipeline python -m trade_pipeline.producer.fake_trades
-# swap the last line for the consumer / uvicorn / dagster commands above to run each component
+make up       # docker compose up -d --build
+make down     # docker compose down -v
+make ps       # docker compose ps
+make logs     # docker compose logs -f
+make demo     # login as the demo user, fetch a few live trades — a quick smoke check
+make test     # uv run pytest tests/ -n auto -v (works fine against a running `make up` stack too)
 ```
+
+`keys-init` and `migrate` one-shot services handle first-run setup (JWT keypair generation, schema +
+partitions) before `api`/`consumer` start, so there's no manual `openssl`/DB-setup step needed for the
+Docker path. Once up: API on `:8000`, consumer `/metrics` on `:8001`, Dagster UI on `:3000`.
+
+`make` isn't installed on Windows by default — `winget install ezwinports.make` gets a real GNU make
+(restart your shell afterward so the PATH update takes effect).
 
 ## Feature flags
 

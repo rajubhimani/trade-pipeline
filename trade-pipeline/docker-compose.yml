@@ -20,12 +20,26 @@ services:
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    healthcheck:
+      # kafka-broker-api-versions.sh ships in every apache/kafka image at this
+      # path — succeeds only once the broker is actually accepting requests,
+      # not just once the process has started.
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
 
   redis:
     image: redis:8.8-alpine
     ports:
       - "6379:6379"
     command: ["redis-server", "--save", ""]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   postgres:
     image: postgres:18.4-alpine
@@ -41,6 +55,97 @@ services:
       # the old .../data path errors out on startup. See
       # https://github.com/docker-library/postgres/pull/1259
       - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U trade_pipeline -d trade_pipeline"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # --- Application services, all sharing the one Dockerfile image (see its
+  # own header comment) — `command:` alone selects which entrypoint runs. ---
+
+  # One-shot: generates the JWT RS256 keypair into the `keys` volume if it
+  # doesn't already exist (see scripts/generate_keys.py — replaces the
+  # README's manual `openssl genrsa` steps, since there's no host shell here
+  # to run them against a container-only volume). `api` depends on this
+  # completing, not just starting.
+  keys-init:
+    build: .
+    command: python -m trade_pipeline.scripts.generate_keys
+    volumes:
+      - keys:/app/keys
+
+  # One-shot: creates the `trades` table (+ partitions) before `api` or
+  # `consumer` touch Postgres, so neither races the other into doing it
+  # implicitly (see scripts/migrate.py).
+  migrate:
+    build: .
+    command: python -m trade_pipeline.scripts.migrate
+    environment:
+      POSTGRES_DSN: postgresql+asyncpg://trade_pipeline:trade_pipeline@postgres:5432/trade_pipeline
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  producer:
+    build: .
+    command: python -m trade_pipeline.producer.fake_trades
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    depends_on:
+      kafka:
+        condition: service_healthy
+
+  consumer:
+    build: .
+    command: python -m trade_pipeline.consumer.dedup_consumer
+    ports:
+      - "8001:8001" # /metrics (see observability/metrics.py)
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      REDIS_URL: redis://redis:6379/0
+      POSTGRES_DSN: postgresql+asyncpg://trade_pipeline:trade_pipeline@postgres:5432/trade_pipeline
+    depends_on:
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  api:
+    build: .
+    command: uvicorn trade_pipeline.api.main:build_production_app --factory --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      POSTGRES_DSN: postgresql+asyncpg://trade_pipeline:trade_pipeline@postgres:5432/trade_pipeline
+      CORS_ORIGINS: http://localhost:8000
+    volumes:
+      - keys:/app/keys
+    depends_on:
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      keys-init:
+        condition: service_completed_successfully
+
+  dagster:
+    build: .
+    command: dagster dev -m trade_pipeline.dagster_pipeline.definitions --host 0.0.0.0
+    ports:
+      - "3000:3000"
+    environment:
+      POSTGRES_DSN: postgresql+asyncpg://trade_pipeline:trade_pipeline@postgres:5432/trade_pipeline
+    volumes:
+      - archive:/app/archive
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
 
 volumes:
   pgdata:
+  keys:
+  archive:

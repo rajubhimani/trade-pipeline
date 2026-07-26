@@ -1,4 +1,4 @@
-.PHONY: install lint test audit check services-up services-down
+.PHONY: install lint test audit check services-up services-down up down logs ps restart demo
 
 install:
 	uv sync
@@ -23,3 +23,31 @@ services-up:
 
 services-down:
 	docker compose down -v
+
+# Whole system — infra (kafka/redis/postgres) plus the app's own producer,
+# consumer, api, and dagster services, all built from ./Dockerfile.
+# --build picks up local source changes; compose brings up dependencies
+# (keys-init, migrate) in order via each service's `depends_on` condition.
+up:
+	docker compose up -d --build
+
+down:
+	docker compose down -v
+
+restart: down up
+
+ps:
+	docker compose ps
+
+logs:
+	docker compose logs -f
+
+# Quick smoke check against a running `make up` stack: log in as the demo
+# user, then use the token to fetch trades — proves producer -> kafka ->
+# consumer -> postgres -> api are all actually wired up, not just "started".
+demo:
+	@TOKEN=$$(curl -s -X POST localhost:8000/auth/login \
+		-H "Content-Type: application/json" \
+		-d '{"username":"demo","password":"trade-pipeline-demo"}' \
+		| python -c "import sys,json;print(json.load(sys.stdin)['access_token'])") && \
+	curl -s "localhost:8000/trades?limit=5" -H "Authorization: Bearer $$TOKEN"

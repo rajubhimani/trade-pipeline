@@ -15,7 +15,14 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-DEFAULT_KEYS_DIR = Path(__file__).parent.parent.parent.parent / "keys"
+# Relative, resolved against the process's cwd — NOT derived from __file__.
+# The package is installed non-editable (`uv sync --locked --no-editable`,
+# see Dockerfile), so at runtime `__file__` points into
+# .venv/lib/python3.14/site-packages/trade_pipeline/..., which has no fixed
+# relationship to the repo root / container WORKDIR. `uv run` (local dev)
+# and every docker-compose service both launch with cwd == the project root
+# (/app in the image), so "keys/..." resolves correctly in both.
+DEFAULT_KEYS_DIR = Path("keys")
 
 
 @dataclass(frozen=True, slots=True)

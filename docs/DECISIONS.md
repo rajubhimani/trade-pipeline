@@ -191,13 +191,31 @@ relative to `pyproject.toml` would build anyway. `--locked` fails the build outr
 which is what you actually want for a CI/production image: a lockfile drift should be a loud build
 failure, not a silent behavioral mismatch shipped to production.
 
-### Dockerfile builds a runnable image, but isn't wired into docker-compose as a running service
-`docker-compose.yml` still brings up infrastructure only (Kafka, Redis, Postgres) — the application
-image is built and verified runnable (producer/consumer/API/Dagster all confirmed working inside it
-against the real compose services), but running the app itself stays on `uv run` locally, preserving
-the fast edit-run development loop this project already relies on. Wiring the app image into compose
-as an always-running service is a natural next step if that loop ever needs to change, not required
-to answer "does this project have a working Dockerfile."
+### `docker-compose.yml` runs the full stack, not just infrastructure (T-24)
+Superseded the earlier decision to keep the app on `uv run` and compose to infra-only — `make up`
+(`docker compose up -d --build`) now brings up everything: `producer`, `consumer`, `api`, and `dagster`
+services built from the one `Dockerfile` (`build: .`, entrypoint selected via `command:`), alongside
+Kafka/Redis/Postgres. Two supporting one-shot services close the gaps a plain `docker run` left open:
+- `keys-init` generates the JWT RS256 keypair into a shared `keys` named volume (`scripts/generate_keys.py`,
+  using `cryptography` directly — no host shell/`openssl` available for a container-only volume).
+- `migrate` creates the schema + partitions before `api`/`consumer` start, so the two don't race each
+  other into calling `init_schema`/`ensure_partitions` implicitly.
+
+All three infra services get real healthchecks (`pg_isready`, `redis-cli ping`,
+`kafka-broker-api-versions.sh`), and app services gate on `condition: service_healthy` /
+`service_completed_successfully` rather than compose's default (and insufficient) "container started"
+ordering. `uv run` locally is still fully supported and unaffected — this only changes what
+`docker compose up` / `make up` does.
+
+**Bug caught during verification:** `ApiEnvSettings`'s default key paths (`api/settings.py`) were
+computed from `Path(__file__).parent.parent.parent.parent`, assuming the source tree's on-disk layout.
+That assumption broke under `uv sync --no-editable` (the Dockerfile's install mode) — `__file__`
+resolves inside `.venv/lib/python3.14/site-packages/trade_pipeline/...` at runtime, not `/app/src/...`,
+so the default silently pointed at a path with no relation to the `keys` volume mount, and the `api`
+container crash-looped on startup (`FileNotFoundError`) rather than failing loudly at the point of the
+bad assumption. Fixed by making the default a plain relative path (`Path("keys")`), resolved against
+the process's cwd — both `uv run` (repo root) and every compose service (`WORKDIR /app`) launch with
+the right cwd already, so no `__file__` introspection is needed at all.
 
 ### DLQ publish-then-commit, not the original skip-without-commit
 The original consumer failure handling (log, skip, don't commit) is correct for *transient* failures —
