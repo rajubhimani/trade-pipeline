@@ -8,6 +8,24 @@
 # builder stage resolves dependencies with cache mounts, final stage copies
 # just the built venv + source into a plain slim Python image (no uv needed
 # at runtime — smaller image, one less moving part in production).
+#
+# A separate Node stage builds the dashboard (dashboard/) into
+# src/trade_pipeline/api/static/ before the Python builder stage copies the
+# whole source tree — so the API's StaticFiles mount (api/main.py) has
+# something to serve without requiring `npm run build` to have been run on
+# the host first.
+
+FROM node:24-slim AS dashboard-builder
+
+# WORKDIR mirrors the real repo layout (trade-pipeline/dashboard/ next to
+# trade-pipeline/src/) — vite.config.js's outDir ("../src/...") is relative
+# to this directory, so it must resolve to /app/src/... to match where the
+# Python builder stage below expects to find it.
+WORKDIR /app/dashboard
+COPY dashboard/package*.json ./
+RUN npm ci
+COPY dashboard/ ./
+RUN npm run build
 
 FROM ghcr.io/astral-sh/uv:python3.14-bookworm-slim AS builder
 
@@ -25,6 +43,9 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-install-project --no-editable
 
 COPY . /app
+# Overwrite whatever (nothing, if .dockerignore excludes it) was in
+# src/trade_pipeline/api/static with the real build from the Node stage.
+COPY --from=dashboard-builder /app/src/trade_pipeline/api/static /app/src/trade_pipeline/api/static
 
 # --locked (not --frozen): fails the build if uv.lock is stale relative to
 # pyproject.toml, rather than silently building from a mismatched lockfile —

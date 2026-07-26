@@ -6,11 +6,14 @@ Postgres/Redis connections (see tests/api/conftest.py) — nothing here reaches
 for a module-level global.
 """
 
+from pathlib import Path
+
 import structlog
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from prometheus_fastapi_instrumentator import Instrumentator
 from redis import Redis
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
@@ -54,6 +57,7 @@ def create_app(
     engine: AsyncEngine,
     redis_client: Redis,
     api_settings: ApiSettings,
+    dashboard_static_dir: Path | None = None,
 ) -> FastAPI:
     app = FastAPI(title="trade-pipeline")
 
@@ -102,6 +106,19 @@ def create_app(
     app.include_router(admin_router)
 
     Instrumentator().instrument(app).expose(app)
+
+    # Built by `npm run build` in dashboard/ (see dashboard/vite.config.js —
+    # outDir points here, base is "/dashboard/" so asset references resolve
+    # correctly once mounted at this path). html=True serves index.html for
+    # the bare /dashboard path, not just /dashboard/index.html directly.
+    # Mounted last: StaticFiles' catch-all shouldn't shadow any API route.
+    # Injectable (defaults to the real build output path) so tests can point
+    # at a controlled tmp directory instead of depending on whether the
+    # dashboard happens to be built locally — same DI pattern as engine/
+    # redis_client/api_settings above.
+    static_dir = dashboard_static_dir or (Path(__file__).parent / "static")
+    if static_dir.exists():
+        app.mount("/dashboard", StaticFiles(directory=static_dir, html=True), name="dashboard")
 
     return app
 
