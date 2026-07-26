@@ -9,6 +9,7 @@ authors = [
 requires-python = ">=3.11,<3.15"
 dependencies = [
     "pydantic>=2.9",
+    "pydantic-settings>=2.6",
     "confluent-kafka>=2.6",
     "redis>=5.2",
     "sqlalchemy[asyncio]>=2.0",

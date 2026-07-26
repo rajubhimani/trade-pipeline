@@ -160,3 +160,19 @@ docker-compose-in-CI setup. Kafka is deliberately not included as a CI service: 
 that talks to a real broker remains manually verified (see `docs/tasks/completed/T-17-docker-image-upgrades.md`),
 since Kafka has no first-party GitHub Actions service support and is meaningfully more fragile to run
 as an ad-hoc container than Postgres/Redis.
+
+### `pydantic-settings`, not hand-rolled dataclass + `os.environ.get()` + a TOML file
+Configuration loading (`common/config.py`, `api/settings.py`) originally hand-rolled env-var reading
+over a `config.toml` file for defaults. Replaced with `pydantic_settings.BaseSettings`: typed
+validation, `.env` file support, and precedence (real env var > `.env` > default) built in rather than
+implemented ad hoc. `.env`/environment variables is also the far more common industry pattern for
+per-environment application config (the 12-factor app convention) — TOML remains the right choice for
+non-secret, checked-in tool/build config (`pyproject.toml` itself), just not for this. `config.toml`
+was removed entirely rather than kept as a second, now-redundant config source.
+
+`ApiSettings` (the value object holding actual key *content*) was deliberately kept separate from the
+new `ApiEnvSettings` (the class that reads paths/CORS from the environment) — tests construct
+`ApiSettings` directly with an in-memory-generated ephemeral RSA keypair (see `tests/api/conftest.py`),
+the same dependency-injection pattern already used elsewhere in this codebase (`create_app` vs
+`build_production_app`). Only `load_api_settings()`, the real production path, touches
+`ApiEnvSettings` at all.

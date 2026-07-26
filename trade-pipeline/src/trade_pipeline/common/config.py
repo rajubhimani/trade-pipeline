@@ -1,62 +1,46 @@
-"""App configuration, loaded from a TOML file.
+"""App configuration — pydantic-settings, not hand-rolled env parsing.
 
-Uses stdlib ``tomllib`` (3.11+) — no third-party ``toml`` dependency, per
-docs/PYTHON_VERSION_NOTES.md. ``tomllib`` is read-only by design (no dump),
-which is fine here since config is authored by hand, not written by the app.
+Precedence (pydantic-settings' own default): real environment variables win
+over a `.env` file, which wins over the baked-in defaults below. Locally,
+copy `.env.example` to `.env` and edit as needed; in production, real env
+vars set by the deployment environment are what actually take effect — no
+code change needed to support either.
+
+Every default matches this project's own docker-compose.yml, so `AppConfig()`
+with zero configuration works out of the box against `docker compose up -d`.
 """
 
-import os
-import tomllib
-from dataclasses import dataclass
-from pathlib import Path
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-@dataclass(frozen=True, slots=True)
-class KafkaConfig:
-    bootstrap_servers: str
-    topic: str
+class KafkaSettings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="KAFKA_", env_file=".env", extra="ignore")
+
+    bootstrap_servers: str = "localhost:9092"
+    topic: str = "trades"
 
 
-@dataclass(frozen=True, slots=True)
-class RedisConfig:
-    url: str
-    dedup_ttl_seconds: int
+class RedisSettings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="REDIS_", env_file=".env", extra="ignore")
+
+    url: str = "redis://localhost:6379/0"
+    dedup_ttl_seconds: int = 300
 
 
-@dataclass(frozen=True, slots=True)
-class PostgresConfig:
-    dsn: str
+class PostgresSettings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="POSTGRES_", env_file=".env", extra="ignore")
+
+    dsn: str = "postgresql+asyncpg://trade_pipeline:trade_pipeline@localhost:5432/trade_pipeline"
 
 
-@dataclass(frozen=True, slots=True)
-class AppConfig:
-    kafka: KafkaConfig
-    redis: RedisConfig
-    postgres: PostgresConfig
+class AppConfig(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    kafka: KafkaSettings = Field(default_factory=KafkaSettings)
+    redis: RedisSettings = Field(default_factory=RedisSettings)
+    postgres: PostgresSettings = Field(default_factory=PostgresSettings)
 
 
-def load_config(path: Path | None = None) -> AppConfig:
-    """Load config from a TOML file, with env-var overrides for secrets.
-
-    Env vars win over file values so the DSN/credentials never need to live in
-    the repo (config.toml holds only non-secret defaults for local dev).
-    """
-    path = path or Path(__file__).parent.parent.parent.parent / "config.toml"
-    with path.open("rb") as f:
-        raw = tomllib.load(f)
-
-    return AppConfig(
-        kafka=KafkaConfig(
-            bootstrap_servers=os.environ.get(
-                "KAFKA_BOOTSTRAP_SERVERS", raw["kafka"]["bootstrap_servers"]
-            ),
-            topic=raw["kafka"]["topic"],
-        ),
-        redis=RedisConfig(
-            url=os.environ.get("REDIS_URL", raw["redis"]["url"]),
-            dedup_ttl_seconds=raw["redis"]["dedup_ttl_seconds"],
-        ),
-        postgres=PostgresConfig(
-            dsn=os.environ.get("POSTGRES_DSN", raw["postgres"]["dsn"]),
-        ),
-    )
+def load_config() -> AppConfig:
+    return AppConfig()

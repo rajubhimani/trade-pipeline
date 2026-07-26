@@ -109,6 +109,14 @@ What would change running this on 3.11 instead of 3.14:
 - `TypeVar`/`Generic[T]` instead of `class Foo[T]` for any new generic classes.
 - `copy.replace()` (3.13+) usage (e.g. `TradeEvent`) would need `dataclasses.replace()` instead.
 
+## Configuration
+
+Settings are [`pydantic-settings`](https://docs.pydantic.dev/latest/concepts/pydantic_settings/), with
+every value defaulted to match this project's own `docker-compose.yml` — zero configuration needed for
+a stock local setup. Precedence: real environment variables > `.env` file > defaults. Copy
+[`.env.example`](.env.example) to `.env` to override anything locally; in production, real env vars set
+by the deployment environment take effect automatically, no code change needed either way.
+
 ## How to run
 
 ```bash
@@ -175,7 +183,7 @@ wrapper, not where any logic lives. CI (`.github/workflows/ci.yml`) runs the sam
 containers (Kafka isn't — producer/consumer code touching a real broker is verified manually, see
 [`../docs/tasks/completed/T-17-docker-image-upgrades.md`](../docs/tasks/completed/T-17-docker-image-upgrades.md)).
 
-As of the last update to this README: **89 tests passing** (serially or under `-n auto`), ruff clean,
+As of the last update to this README: **100 tests passing** (serially or under `-n auto`), ruff clean,
 no known vulnerabilities, zero deprecation warnings (enforced via
 `filterwarnings = ["error::DeprecationWarning", ...]` in `pyproject.toml` — see
 [`../docs/CODING_STANDARDS.md`](../docs/CODING_STANDARDS.md)).

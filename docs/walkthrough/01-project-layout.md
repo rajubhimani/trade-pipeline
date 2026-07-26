@@ -53,7 +53,7 @@ flowchart TD
 trade-pipeline/
   pyproject.toml, uv.lock        — uv-managed deps, requires-python 3.11-3.14
   docker-compose.yml             — Kafka (KRaft), Redis, Postgres
-  config.toml                    — non-secret local-dev defaults
+  .env.example                    — documents every setting; copy to .env for local overrides
   keys/                          — RSA keypair for JWT RS256 (gitignored, generate locally)
   src/trade_pipeline/
     producer/       — Component 1: Kafka producer          → page 2

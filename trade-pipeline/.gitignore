@@ -12,5 +12,8 @@ wheels/
 # Local dev secrets — never commit real keys
 keys/*.pem
 
+# Local env overrides — .env.example is the tracked, documented template
+.env
+
 # Local stand-in for S3 cold storage (dagster_pipeline/archival.py) — generated data, not source
 archive/
