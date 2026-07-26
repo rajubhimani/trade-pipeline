@@ -11,7 +11,7 @@ lint:
 # pytest-xdist, safe because each worker gets its own Postgres schema and
 # Redis DB index.
 test:
-	uv run pytest tests/ -n auto -q
+	uv run pytest tests/ -n auto -v
 
 audit:
 	uv run pip-audit

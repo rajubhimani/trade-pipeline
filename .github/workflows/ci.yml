@@ -62,7 +62,7 @@ jobs:
         run: uv run ruff check .
 
       - name: Test (pytest)
-        run: uv run pytest tests/ -n auto -q
+        run: uv run pytest tests/ -n auto -v
 
       - name: Dependency audit (pip-audit)
         run: uv run pip-audit
