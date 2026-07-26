@@ -112,3 +112,25 @@ being written into `docker-compose.yml`, rather than assumed from memory or trai
 breaking change in the process: the Postgres 18 image changed its expected data-directory mount point
 (`/var/lib/postgresql` instead of `/var/lib/postgresql/data`), which would have silently failed to
 start with the old volume path.
+
+### Kafka's native `compression.type`, not hand-rolled per-message `compression.zstd`
+The source plan literally names `compression.zstd` (3.14 stdlib) for producer-side message
+compression. Kafka's own `compression.type: zstd` producer config was used instead: it compresses
+whole batches, which achieves a far better ratio than compressing tiny individual JSON messages one
+at a time — and the consumer needs zero decompression code, since librdkafka's `Consumer`
+decompresses transparently on read. The stdlib `compression.zstd` module is still used in this
+codebase, just where it's actually the right tool: `dagster_pipeline/archival.py`'s batch
+cold-storage files, which really do compress one large payload at a time.
+
+### A real runtime fallback for `compression.zstd`, not just a fallback comment
+`archival.py` originally had a comment noting `zstandard` (PyPI) as the 3.11–3.13 fallback for
+`compression.zstd` (3.14 stdlib) without actually implementing it — this broke 3 of 4 legs of the CI
+matrix the moment it started running (`ModuleNotFoundError: No module named 'compression'`). Fixed
+with a real `try`/`except ImportError` shim wrapping `zstandard`'s `ZstdCompressor`/`ZstdDecompressor`
+to match the stdlib module's `compress()`/`decompress()` API, and added `zstandard` as a
+`python_version < '3.14'` marker dependency. Lesson: the project's general policy (write the
+newest-native form + a one-line fallback *comment*) is correct for syntax differences, which don't
+break imports — it is not sufficient for a genuinely version-gated *module*, where an unconditional
+import breaks collection entirely on unsupported versions. Verified locally against all four Python versions
+(`uv run --python 3.11/3.12/3.13/3.14 --isolated pytest`) before trusting the fix, not just re-pushed
+and hoped.

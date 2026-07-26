@@ -36,6 +36,14 @@ unless the module's whole purpose is the comparison itself (only `version_compat
 Before claiming a feature is available on a given version, check the table in
 `docs/PYTHON_VERSION_NOTES.md` — don't rely on memory.
 
+**Exception — version-gated stdlib *modules*, not syntax**: the comment-only rule above assumes the
+newer form still *imports* cleanly on older versions (true for syntax like `class Foo[T]` guarded
+behind `exec()`, or a comment noting `copy.replace()` needs 3.13+). It is **not** true for a module
+that plain doesn't exist pre-3.14, like `compression.zstd` — an unconditional `from compression import
+zstd` breaks collection entirely on 3.11–3.13, which the CI matrix (`.github/workflows/ci.yml`) will
+catch immediately. For these, write a real `try`/`except ImportError` runtime shim (see
+`dagster_pipeline/archival.py`), not a comment — this was a real bug caught by CI, not a hypothetical.
+
 ## Testing
 
 - `pytest` + `pytest-asyncio` (`asyncio_mode = "auto"` — async test functions don't need a decorator).

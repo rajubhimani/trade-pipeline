@@ -6,6 +6,17 @@ AIOProducer is beta as of 2.13.0b1 and not used here (see docs/DECISIONS.md).
 Intentionally re-sends ~5% of events with a duplicate trade_id to simulate
 real-world broker duplicate delivery, which the consumer's Redis dedup layer
 must handle.
+
+Compression: zstd is enabled via Kafka's own ``compression.type`` producer
+config (librdkafka-native), not hand-rolled per-message payload compression
+with the stdlib ``compression.zstd`` module. This is the idiomatic choice —
+Kafka compresses whole batches, which gets a far better ratio than
+compressing tiny individual JSON messages one at a time would; the consumer
+needs zero decompression code since librdkafka's Consumer decompresses
+transparently. The stdlib ``compression.zstd`` module is still demonstrated
+in this codebase where it's the right tool: batch cold-storage archival
+files (see ``dagster_pipeline/archival.py``), which really are compressing
+one large payload at a time.
 """
 
 import json
@@ -32,9 +43,15 @@ def _serialize(event: TradeEvent) -> bytes:
     return json.dumps(payload).encode("utf-8")
 
 
-def _delivery_report(err, msg) -> None:
+def _delivery_report(err, _msg) -> None:
+    # confluent_kafka's produce() callback signature requires (err, msg) —
+    # msg (the delivered/failed Message) isn't needed here, only the error.
     if err is not None:
         logger.error("delivery failed: %s", err)
+
+
+def _producer_config(bootstrap_servers: str) -> dict:
+    return {"bootstrap.servers": bootstrap_servers, "compression.type": "zstd"}
 
 
 def generate_trade(broker_id: str) -> TradeEvent:
@@ -54,7 +71,7 @@ def run_producer(
     event_count: int = 1000,
     sleep_seconds: float = 0.01,
 ) -> None:
-    producer = Producer({"bootstrap.servers": bootstrap_servers})
+    producer = Producer(_producer_config(bootstrap_servers))
     last_events: list[TradeEvent] = []
 
     for i in range(event_count):
