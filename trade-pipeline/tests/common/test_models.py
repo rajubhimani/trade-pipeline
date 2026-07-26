@@ -5,13 +5,13 @@ from trade_pipeline.common.models import TradeEvent, new_trade_id
 
 
 def make_event(**overrides) -> TradeEvent:
-    defaults = dict(
-        broker_id="broker-1",
-        trade_id="t-1",
-        symbol="AAPL",
-        qty=10,
-        price=Decimal("190.50"),
-    )
+    defaults = {
+        "broker_id": "broker-1",
+        "trade_id": "t-1",
+        "symbol": "AAPL",
+        "qty": 10,
+        "price": Decimal("190.50"),
+    }
     defaults.update(overrides)
     return TradeEvent(**defaults)
 

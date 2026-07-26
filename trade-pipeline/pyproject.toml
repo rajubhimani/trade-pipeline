@@ -14,10 +14,11 @@ dependencies = [
     "sqlalchemy[asyncio]>=2.0",
     "asyncpg>=0.30",
     "psycopg[binary]>=3.2",
+    "argon2-cffi>=23.1",
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
     "pyjwt>=2.9",
-    "slowapi>=0.1.9",
+    "cryptography>=43",
     "structlog>=24.4",
     "prometheus-fastapi-instrumentator>=7.0",
     "tenacity>=9.0",
@@ -35,6 +36,9 @@ dev = [
     "ruff>=0.8",
     "mypy>=1.13",
     "pip-audit>=2.7",
+    "aiosqlite>=0.20",
+    "httpx>=0.28",
+    "fakeredis>=2.26",
 ]
 
 [build-system]
@@ -44,10 +48,29 @@ build-backend = "uv_build"
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+filterwarnings = [
+    "error::DeprecationWarning",
+    "error::PendingDeprecationWarning",
+    # Third-party libs we don't control the internals of — narrow, not blanket,
+    # exceptions only. Remove an entry the moment its library fixes it upstream.
+]
 
 [tool.ruff]
 target-version = "py311"
 line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "C4", "SIM", "RUF"]
+ignore = [
+    "UP006",  # use PEP 585 builtin generics — fine to leave typing.X in 3.11-compat modules
+    "UP007",  # use X | Y unions — same, applied opportunistically not repo-wide
+]
+
+[tool.ruff.lint.per-file-ignores]
+# version_compat_demo.py deliberately keeps 3.11-style TypeVar/Generic imports
+# and a `from __future__ import annotations` alongside 3.12+/3.14 forms, for
+# the side-by-side comparison — pyupgrade/UP rules would "fix" away the point.
+"src/trade_pipeline/common/version_compat_demo.py" = ["UP035", "UP040", "F401"]
 
 [tool.mypy]
 python_version = "3.11"

@@ -34,3 +34,35 @@ with observability, not per-message stream processing.
 ### uv over pip/poetry
 Single fast tool for Python version management (3.11–3.14 side by side), dependency resolution, and
 lockfiles. Matches the project's explicit goal of running/comparing multiple Python versions.
+
+### Sync psycopg for the consumer's Postgres sink, async asyncpg for the API
+The consumer's Kafka poll loop (`confluent_kafka.Consumer.poll()`) is a plain blocking loop, not an
+asyncio event loop — an async DB driver there would need its own bridged event loop for zero benefit.
+The FastAPI query layer actually runs an event loop, so async SQLAlchemy + `asyncpg` earns its keep
+there. Same `Trade` ORM model backs both (`common/db_models.py`) — SQLAlchemy table definitions are
+engine-agnostic; only the Session/Engine layer differs.
+
+### Argon2id over bcrypt for password hashing
+Checked current guidance while building the demo login: Argon2id (`argon2-cffi`) is the current
+OWASP-recommended default for new applications. bcrypt is still fine and widely used, but is no longer
+the default recommendation; `passlib` (a common bcrypt wrapper) is confirmed unmaintained since 2020
+and was ruled out on that basis alone.
+
+### Pure ASGI middleware over `BaseHTTPMiddleware` for security headers + audit logging
+`starlette.middleware.base.BaseHTTPMiddleware` is the tutorial-standard choice, but it wraps every
+request in an extra response-streaming layer that measurably costs throughput (~1.8x vs pure ASGI) and
+has known `contextvars`/background-task propagation issues, because it runs the inner app in a
+separate anyio task. Both of these middlewares run on every single request, so the extra verbosity of
+writing them as plain ASGI callables (`api/middleware.py`) was worth it. `CORSMiddleware` itself is
+left as-is (already pure ASGI internally).
+
+### Custom Redis-backed rate limiter over `slowapi`
+Started with `slowapi` (the common choice for FastAPI rate limiting), but its own internals call the
+now-deprecated `asyncio.iscoroutinefunction` (slated for removal in Python 3.16) — this surfaced
+immediately as a test failure once `error::DeprecationWarning` was added to pytest's `filterwarnings`
+(see `CODING_STANDARDS.md`), and isn't something fixable from the outside. Replaced with a small
+Redis-backed pure-ASGI `RateLimitMiddleware` (`api/rate_limit.py`) using fixed-window `INCR` + `EXPIRE`
+— the same pattern the plan's own Week 6-7 system-design track recommends for a rate limiter. This is
+also Redis-backed rather than slowapi's default in-process storage, so it's correct across multiple
+API worker processes rather than under-counting, which is a real limitation worth knowing about even
+if this project only runs one worker.

@@ -14,7 +14,7 @@ Implements the plan's Week 5 JWT hardening checklist:
 """
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import jwt
@@ -35,7 +35,7 @@ class AccessTokenClaims:
 
 
 def issue_access_token(user_id: str, private_key: str) -> str:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     payload = {
         "sub": user_id,
         "jti": str(uuid4()),
@@ -61,5 +61,5 @@ def decode_access_token(token: str, public_key: str) -> AccessTokenClaims:
     return AccessTokenClaims(
         sub=payload["sub"],
         jti=payload["jti"],
-        exp=datetime.fromtimestamp(payload["exp"], tz=timezone.utc),
+        exp=datetime.fromtimestamp(payload["exp"], tz=UTC),
     )

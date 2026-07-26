@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
@@ -24,14 +24,14 @@ def engine():
 
 
 def make_event(**overrides) -> TradeEvent:
-    defaults = dict(
-        broker_id="broker-1",
-        trade_id="t-1",
-        symbol="AAPL",
-        qty=10,
-        price=Decimal("190.50"),
-        timestamp=datetime(2026, 7, 26, tzinfo=timezone.utc),
-    )
+    defaults = {
+        "broker_id": "broker-1",
+        "trade_id": "t-1",
+        "symbol": "AAPL",
+        "qty": 10,
+        "price": Decimal("190.50"),
+        "timestamp": datetime(2026, 7, 26, tzinfo=UTC),
+    }
     defaults.update(overrides)
     return TradeEvent(**defaults)
 

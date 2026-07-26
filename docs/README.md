@@ -14,3 +14,7 @@ Managed primarily via the `.claude/skills/` skills (`add-task`, `update-task`, `
 - **DECISIONS.md** — ADR-style rationale for non-obvious choices (Redis vs DB, RS256 vs HS256, etc).
 - **PYTHON_VERSION_NOTES.md** — 3.11→3.14 feature-availability table, cited by code comments instead
   of guessed from memory.
+- **CODING_STANDARDS.md** — ruff config/rules, version-gating rule, testing conventions,
+  documentation-first workflow, security-sensitive code rules.
+- **GIT_PRACTICES.md** — branching (`main`/`develop`), Conventional Commits format, what never gets
+  committed, pre-push checklist.

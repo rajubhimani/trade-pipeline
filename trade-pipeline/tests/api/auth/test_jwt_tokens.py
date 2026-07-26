@@ -1,10 +1,9 @@
 import time
-from datetime import timedelta
 
 import jwt
 import pytest
-from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
 
 from trade_pipeline.api.auth.jwt_tokens import (
     ALGORITHM,
@@ -90,13 +89,32 @@ def test_hs256_confusion_attack_is_rejected(keypair):
     """Algorithm-confusion attack: attacker signs with HS256 using the RS256
     public key as if it were a shared secret. Must fail because we pin
     algorithms=[RS256] on decode, so an HS256-signed token is rejected outright.
+
+    PyJWT's own ``encode()`` now refuses to build this token (it detects the
+    key looks like a PEM/asymmetric key and won't use it as an HMAC secret) —
+    which is itself a nice defense-in-depth data point, but means we have to
+    hand-forge the token with raw ``hmac``/base64 to simulate an actual
+    attacker, who wouldn't be using our copy of PyJWT to attack us.
     """
+    import base64
+    import hashlib
+    import hmac
+    import json
+
     _, public_key = keypair
-    forged = jwt.encode(
-        {"sub": "attacker", "jti": "x", "exp": int(time.time()) + 3600},
-        key=public_key,
-        algorithm="HS256",
+
+    def b64url(data: bytes) -> bytes:
+        return base64.urlsafe_b64encode(data).rstrip(b"=")
+
+    header = b64url(json.dumps({"alg": "HS256", "typ": "JWT"}).encode())
+    payload = b64url(
+        json.dumps({"sub": "attacker", "jti": "x", "exp": int(time.time()) + 3600}).encode()
     )
+    signing_input = header + b"." + payload
+    signature = b64url(
+        hmac.new(public_key.encode(), signing_input, hashlib.sha256).digest()
+    )
+    forged = (signing_input + b"." + signature).decode()
 
     with pytest.raises(TokenError):
         decode_access_token(forged, public_key)
