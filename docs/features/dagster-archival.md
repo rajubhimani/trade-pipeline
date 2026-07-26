@@ -55,7 +55,7 @@ Out:
   the Dagster UI.
 - **DB engine injected via a Dagster resource (`DbEngineResource`), not loaded from config inside the
   asset**: same DI reasoning as `api/main.py`'s `create_app()` factory — lets `dg.materialize()` swap
-  in a SQLite in-memory engine for tests, so the *actual* asset/resource wiring gets exercised end to
+  in the shared `pg_engine` fixture (real Postgres) for tests, so the *actual* asset/resource wiring gets exercised end to
   end, not just the extracted `archive_pending_trades` logic in isolation. Confirmed working via a real
   `dg.materialize()` call before committing to this design.
 
@@ -68,7 +68,7 @@ comment notes `zstandard` (PyPI) as the pre-3.14 equivalent import, not duplicat
 
 ## Testing plan
 
-- 7 tests in `tests/dagster_pipeline/test_archival.py` against SQLite in-memory with seeded `Trade`
+- 7 tests in `tests/dagster_pipeline/test_archival.py` against real Postgres (via the shared `pg_engine` fixture) with seeded `Trade`
   rows (same style as `tests/consumer/test_postgres_sink.py`): empty-pending-rows clean no-op,
   archives + writes a compressed file, archived rows excluded from a second run, batch-size cap
   respected, archive file round-trips via `read_archived_batch`, and `ArchiveResult.compression_ratio`

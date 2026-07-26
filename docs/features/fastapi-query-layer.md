@@ -80,8 +80,8 @@ No 3.12+/3.14-only syntax required for this feature — targets the full 3.11–
   6 tests, no FastAPI app needed.
 - `httpx.AsyncClient` + `ASGITransport` (current FastAPI-recommended pattern, confirmed via research —
   supersedes `starlette.testclient.TestClient` for genuine async tests) against an app built via
-  `create_app()` with a SQLite in-memory engine (`StaticPool` + `check_same_thread=False`, needed so
-  multiple sessions share the same in-memory DB) and `fakeredis.FakeRedis`. 10 endpoint tests: login
+  `create_app()` via the shared `pg_async_engine` fixture (real Postgres, isolated per xdist worker/test — see
+  tests/conftest.py) and the real `redis_client` fixture. 10 endpoint tests: login
   success/wrong-password/unknown-user, refresh without cookie / rotates-and-invalidates-old, logout
   revokes access token, trades without-token/with-token/filter-by-symbol/respects-limit.
 - `filterwarnings = ["error::DeprecationWarning", "error::PendingDeprecationWarning"]` added to

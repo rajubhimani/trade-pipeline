@@ -2,23 +2,16 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import create_engine, select
+from sqlalchemy import select
 from sqlalchemy.orm import sessionmaker
 
-from trade_pipeline.common.db_models import Base, Trade
+from trade_pipeline.common.db_models import Trade
 from trade_pipeline.dagster_pipeline.archival import archive_pending_trades, read_archived_batch
 
 
 @pytest.fixture
-def engine():
-    eng = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(eng)
-    return eng
-
-
-@pytest.fixture
-def session_factory(engine):
-    return sessionmaker(bind=engine)
+def session_factory(pg_engine):
+    return sessionmaker(bind=pg_engine)
 
 
 def _seed_trades(session_factory, count: int) -> None:

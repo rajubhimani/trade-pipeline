@@ -20,10 +20,11 @@ In:
   not just the newest interpreter) so version-compat regressions surface automatically.
 
 Out:
-- Docker-based integration/end-to-end CI (spinning up Kafka/Redis/Postgres in CI and running a real
-  producer→consumer→API smoke test) — real infrastructure in CI is heavier than this project's current
-  scope; unit/component tests with fakes are what CI runs. Tracked as a natural follow-up if the
-  project grows a deployment target, not built now.
+- A full producer→consumer→API Kafka smoke test running automatically in CI — Postgres and Redis *are*
+  real GitHub Actions service containers as of T-19 (`docs/features/real-service-testing.md`), but
+  Kafka has no first-party GitHub Actions service support and is meaningfully more fragile to run ad
+  hoc; producer/consumer code touching a real broker remains manually verified
+  (`docs/tasks/completed/T-17-docker-image-upgrades.md`), not automated in CI.
 - Coverage thresholds/gates — `pytest-cov` is already a dev dependency; CI can report coverage without
   this feature needing to enforce a minimum.
 

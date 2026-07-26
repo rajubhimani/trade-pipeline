@@ -63,7 +63,7 @@ without a corresponding file actually on disk.
 - [`DbEngineResource`](../../trade-pipeline/src/trade_pipeline/dagster_pipeline/definitions.py) — a
   `ConfigurableResource` supplying the DB engine, instead of the asset loading config and building an
   engine itself. Same dependency-injection reasoning as [`create_app()`](04-api-and-auth.md) on the API
-  side: lets `dg.materialize()` swap in a SQLite in-memory engine for tests, exercising the *real*
+  side: lets `dg.materialize()` swap in the shared `pg_engine` fixture (real Postgres) for tests, exercising the *real*
   asset/resource wiring rather than only the extracted `archive_pending_trades` logic. Confirmed
   working via an actual `dg.materialize()` call before committing to this design (see
   [DECISIONS.md](../DECISIONS.md)).

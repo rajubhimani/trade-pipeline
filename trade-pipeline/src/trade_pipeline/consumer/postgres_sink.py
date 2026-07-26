@@ -24,6 +24,7 @@ from sqlalchemy.orm import sessionmaker
 
 from trade_pipeline.common.db_models import Base, Trade
 from trade_pipeline.common.models import TradeEvent
+from trade_pipeline.common.partitioning import ensure_partitions
 
 
 class DuplicateTradeError(Exception):
@@ -47,6 +48,11 @@ def make_engine(dsn: str):
 
 def init_schema(engine) -> None:
     Base.metadata.create_all(engine)
+    # trades is PARTITION BY RANGE (see Trade.__table_args__) — the ORM's
+    # create_all emits the parent table DDL but can't create child
+    # partitions on its own; without at least the DEFAULT partition, every
+    # insert would be rejected outright.
+    ensure_partitions(engine)
 
 
 def make_sink(engine) -> Callable[[TradeEvent], None]:

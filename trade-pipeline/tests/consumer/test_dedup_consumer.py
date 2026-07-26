@@ -4,20 +4,12 @@ from decimal import Decimal
 from trade_pipeline.consumer.dedup_consumer import DedupConsumer
 
 
-class FakeRedis:
-    """Minimal fake matching the .set(key, value, nx=, ex=) surface we use."""
-
-    def __init__(self):
-        self._store: dict[str, object] = {}
-
-    def set(self, key, value, nx=False, ex=None):
-        if nx and key in self._store:
-            return None
-        self._store[key] = value
-        return True
-
-
 class FakeMessage:
+    """Minimal stand-in for confluent_kafka.Message's .value() — not a
+    service fake, just avoids needing a real Kafka message object to test
+    pure deserialization/dedup logic.
+    """
+
     def __init__(self, payload: dict):
         self._payload = payload
 
@@ -36,9 +28,9 @@ def _payload(trade_id="t-1", broker_id="broker-1"):
     }
 
 
-def test_first_event_is_processed_not_duplicate():
+def test_first_event_is_processed_not_duplicate(redis_client):
     sink_calls = []
-    consumer = DedupConsumer(FakeRedis(), dedup_ttl_seconds=300, sink=sink_calls.append)
+    consumer = DedupConsumer(redis_client, dedup_ttl_seconds=300, sink=sink_calls.append)
 
     committed = consumer.process_message(FakeMessage(_payload()))
 
@@ -49,10 +41,9 @@ def test_first_event_is_processed_not_duplicate():
     assert consumer.stats.duplicates == 0
 
 
-def test_duplicate_event_is_dropped_not_sunk():
+def test_duplicate_event_is_dropped_not_sunk(redis_client):
     sink_calls = []
-    redis = FakeRedis()
-    consumer = DedupConsumer(redis, dedup_ttl_seconds=300, sink=sink_calls.append)
+    consumer = DedupConsumer(redis_client, dedup_ttl_seconds=300, sink=sink_calls.append)
 
     consumer.process_message(FakeMessage(_payload(trade_id="dup-1")))
     committed = consumer.process_message(FakeMessage(_payload(trade_id="dup-1")))
@@ -63,9 +54,9 @@ def test_duplicate_event_is_dropped_not_sunk():
     assert consumer.stats.duplicates == 1
 
 
-def test_different_brokers_same_trade_id_are_not_duplicates():
+def test_different_brokers_same_trade_id_are_not_duplicates(redis_client):
     sink_calls = []
-    consumer = DedupConsumer(FakeRedis(), dedup_ttl_seconds=300, sink=sink_calls.append)
+    consumer = DedupConsumer(redis_client, dedup_ttl_seconds=300, sink=sink_calls.append)
 
     consumer.process_message(FakeMessage(_payload(trade_id="t-1", broker_id="broker-A")))
     consumer.process_message(FakeMessage(_payload(trade_id="t-1", broker_id="broker-B")))
@@ -74,8 +65,8 @@ def test_different_brokers_same_trade_id_are_not_duplicates():
     assert consumer.stats.duplicates == 0
 
 
-def test_dedup_hit_rate_stat():
-    consumer = DedupConsumer(FakeRedis(), dedup_ttl_seconds=300, sink=lambda e: None)
+def test_dedup_hit_rate_stat(redis_client):
+    consumer = DedupConsumer(redis_client, dedup_ttl_seconds=300, sink=lambda e: None)
     consumer.process_message(FakeMessage(_payload(trade_id="t-1")))
     consumer.process_message(FakeMessage(_payload(trade_id="t-1")))  # dup
     consumer.process_message(FakeMessage(_payload(trade_id="t-2")))

@@ -1,13 +1,9 @@
 import pytest
 import pytest_asyncio
-from fakeredis import FakeRedis
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy.ext.asyncio import create_async_engine
-from sqlalchemy.pool import StaticPool
 
 from trade_pipeline.api.main import create_app
 from trade_pipeline.api.settings import ApiSettings
-from trade_pipeline.common.db_models import Base
 
 
 def _generate_keypair() -> tuple[str, str]:
@@ -28,19 +24,7 @@ def _generate_keypair() -> tuple[str, str]:
 
 
 @pytest_asyncio.fixture
-async def app():
-    # StaticPool: keeps one shared SQLite in-memory connection across the
-    # whole engine, so multiple sessions (e.g. one per request) see the same
-    # tables — default pooling gives each connection its own independent
-    # in-memory DB, which looks like "no such table" errors otherwise.
-    engine = create_async_engine(
-        "sqlite+aiosqlite:///:memory:",
-        poolclass=StaticPool,
-        connect_args={"check_same_thread": False},
-    )
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
+async def app(pg_async_engine, redis_client):
     private_key, public_key = _generate_keypair()
     settings = ApiSettings(
         private_key=private_key,
@@ -48,14 +32,10 @@ async def app():
         cors_origins=("http://localhost:3000",),
     )
 
-    # A fresh FakeRedis per test avoids rate-limit counters leaking between tests.
-    redis_client = FakeRedis()
-
-    fastapi_app = create_app(engine=engine, redis_client=redis_client, api_settings=settings)
-    fastapi_app.state.test_engine = engine  # kept alive for the test's duration
+    fastapi_app = create_app(
+        engine=pg_async_engine, redis_client=redis_client, api_settings=settings
+    )
     yield fastapi_app
-
-    await engine.dispose()
 
 
 @pytest_asyncio.fixture

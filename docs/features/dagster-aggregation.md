@@ -45,7 +45,8 @@ Uses `read_archived_batch`, which already handles the `compression.zstd`/`zstand
 ## Testing plan
 
 - 5 pure-function tests (`tests/dagster_pipeline/test_aggregation.py`) seeding real archive files (via
-  `archive_pending_trades` against SQLite in-memory, same as T-8's tests): empty directory is a clean
+  `archive_pending_trades` against the shared `pg_engine` fixture, real Postgres, same as T-8's tests):
+  empty directory is a clean
   no-op, volume/count aggregation correctness, aggregation across multiple archive files, output file
   written/not-written depending on whether `output_dir` is given.
 - 1 `dg.materialize()` test (`test_daily_aggregate_materializes_after_archived_trades`) exercising the

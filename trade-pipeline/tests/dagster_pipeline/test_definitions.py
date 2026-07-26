@@ -2,19 +2,19 @@
 extracted archive_pending_trades logic — dg.materialize() runs the real
 @asset in-process, no Dagster daemon/webserver needed.
 
-DbEngineResource normally builds a fresh engine per get_engine() call, which
-would mean a *new*, empty ``sqlite:///:memory:`` database each time — a
-subclass here pins one shared engine/schema for the test instead.
+DbEngineResource normally builds a fresh engine per get_engine() call
+(would defeat this project's shared `pg_engine` fixture) — a fixture-scoped
+subclass here pins that fixture's real engine instead.
 """
 
 from datetime import UTC, datetime
 from decimal import Decimal
 
 import dagster as dg
-from sqlalchemy import create_engine
+import pytest
 from sqlalchemy.orm import sessionmaker
 
-from trade_pipeline.common.db_models import Base, Trade
+from trade_pipeline.common.db_models import Trade
 from trade_pipeline.dagster_pipeline.definitions import (
     AggregatesDirResource,
     ArchiveDirResource,
@@ -23,22 +23,18 @@ from trade_pipeline.dagster_pipeline.definitions import (
     daily_aggregate,
 )
 
-_SHARED_ENGINE = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
+
+@pytest.fixture
+def fixed_engine_resource(pg_engine):
+    class _FixedEngineResource(DbEngineResource):
+        def get_engine(self):
+            return pg_engine
+
+    return _FixedEngineResource(dsn="unused")
 
 
-class _FixedEngineResource(DbEngineResource):
-    def get_engine(self):
-        return _SHARED_ENGINE
-
-
-def _reset_schema():
-    Base.metadata.drop_all(_SHARED_ENGINE)
-    Base.metadata.create_all(_SHARED_ENGINE)
-
-
-def test_materialize_archives_pending_trades(tmp_path):
-    _reset_schema()
-    with sessionmaker(bind=_SHARED_ENGINE)() as session:
+def test_materialize_archives_pending_trades(pg_engine, fixed_engine_resource, tmp_path):
+    with sessionmaker(bind=pg_engine)() as session:
         session.add(
             Trade(
                 broker_id="broker-1",
@@ -54,7 +50,7 @@ def test_materialize_archives_pending_trades(tmp_path):
     result = dg.materialize(
         [archived_trades],
         resources={
-            "db_engine": _FixedEngineResource(dsn="sqlite:///:memory:"),
+            "db_engine": fixed_engine_resource,
             "archive_dir": ArchiveDirResource(path=str(tmp_path)),
         },
     )
@@ -66,13 +62,11 @@ def test_materialize_archives_pending_trades(tmp_path):
     assert metadata["compressed_bytes"].value > 0
 
 
-def test_materialize_is_a_noop_with_nothing_pending(tmp_path):
-    _reset_schema()
-
+def test_materialize_is_a_noop_with_nothing_pending(fixed_engine_resource, tmp_path):
     result = dg.materialize(
         [archived_trades],
         resources={
-            "db_engine": _FixedEngineResource(dsn="sqlite:///:memory:"),
+            "db_engine": fixed_engine_resource,
             "archive_dir": ArchiveDirResource(path=str(tmp_path)),
         },
     )
@@ -82,12 +76,13 @@ def test_materialize_is_a_noop_with_nothing_pending(tmp_path):
     assert event.materialization.metadata["archived_count"].value == 0
 
 
-def test_daily_aggregate_materializes_after_archived_trades(tmp_path):
+def test_daily_aggregate_materializes_after_archived_trades(
+    pg_engine, fixed_engine_resource, tmp_path
+):
     """Exercises the real asset dependency graph — daily_aggregate depends
     on archived_trades — not just the two assets in isolation.
     """
-    _reset_schema()
-    with sessionmaker(bind=_SHARED_ENGINE)() as session:
+    with sessionmaker(bind=pg_engine)() as session:
         session.add(
             Trade(
                 broker_id="broker-1",
@@ -106,7 +101,7 @@ def test_daily_aggregate_materializes_after_archived_trades(tmp_path):
     result = dg.materialize(
         [archived_trades, daily_aggregate],
         resources={
-            "db_engine": _FixedEngineResource(dsn="sqlite:///:memory:"),
+            "db_engine": fixed_engine_resource,
             "archive_dir": ArchiveDirResource(path=str(archive_dir)),
             "aggregates_dir": AggregatesDirResource(path=str(aggregates_dir)),
         },

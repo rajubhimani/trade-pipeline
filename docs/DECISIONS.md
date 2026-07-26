@@ -134,3 +134,29 @@ break imports — it is not sufficient for a genuinely version-gated *module*, w
 import breaks collection entirely on unsupported versions. Verified locally against all four Python versions
 (`uv run --python 3.11/3.12/3.13/3.14 --isolated pytest`) before trusting the fix, not just re-pushed
 and hoped.
+
+### Real Postgres/Redis in tests, not SQLite/fakeredis
+This project ran its whole test suite against SQLite in-memory and `fakeredis`/hand-rolled fakes for
+its first several components — fast, no Docker needed, and genuinely sufficient for logic that never
+touched a Postgres- or Redis-specific feature. That changed by explicit request: tests now run against
+the real `postgres:18.4-alpine` and `redis:8.8-alpine` containers this project's own
+`docker-compose.yml` already defines (`docker compose up -d postgres redis` before `pytest`).
+
+This is what actually unblocked Postgres partitioning (see `docs/features/postgres-partitioning.md`):
+partitioning requires a composite `(id, timestamp)` primary key, which SQLite cannot autoincrement at
+all — forcing that onto a schema also used by SQLite-backed tests would have meant rewriting every
+test that constructs a `Trade` row without an explicit `id`. Testing against real Postgres removed the
+conflict entirely; there's one schema, not two dialects to keep compatible.
+
+Parallelized with `pytest-xdist` (`-n auto`) to offset the cost of talking to real services — each
+worker gets its own Postgres schema (`search_path`) and Redis logical DB index, both derived from the
+xdist worker id, so workers never see each other's data despite sharing the same containers. Within a
+single worker, each test gets a fresh schema (drop/recreate) or a flushed Redis DB, so tests remain
+independent of execution order.
+
+CI (`.github/workflows/ci.yml`) runs real Postgres/Redis as GitHub Actions `services:` containers
+(well-supported, exposed to the runner's `localhost` automatically) — not a hand-rolled
+docker-compose-in-CI setup. Kafka is deliberately not included as a CI service: producer/consumer code
+that talks to a real broker remains manually verified (see `docs/tasks/completed/T-17-docker-image-upgrades.md`),
+since Kafka has no first-party GitHub Actions service support and is meaningfully more fragile to run
+as an ad-hoc container than Postgres/Redis.

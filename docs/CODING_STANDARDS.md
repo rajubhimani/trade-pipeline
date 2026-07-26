@@ -47,13 +47,25 @@ catch immediately. For these, write a real `try`/`except ImportError` runtime sh
 ## Testing
 
 - `pytest` + `pytest-asyncio` (`asyncio_mode = "auto"` — async test functions don't need a decorator).
-- Prefer fakes over mocking libraries for simple interfaces (see `FakeRedis`/`FakeMessage` in
-  `tests/consumer/test_dedup_consumer.py`) — a 10-line fake matching the exact subset of the real
-  API used is easier to read and trust than a `unittest.mock.MagicMock` with asserted call patterns.
-- SQLite in-memory (sync tests) / `aiosqlite` (async tests) stand in for Postgres in unit tests — real
-  Postgres-only features (JSONB, arrays, etc.) aren't used, so this is safe. Real end-to-end tests
-  against actual Docker Compose services are a separate, explicitly deferred task (see
-  `docs/tasks/backlog/T-9-pytest-suite.md`), not something every unit test needs.
+- **Real Postgres and Redis, not SQLite/fakeredis** — see `docs/DECISIONS.md` "Real Postgres/Redis in
+  tests, not SQLite/fakeredis". Run `docker compose up -d postgres redis` (or the full stack) before
+  `pytest`; `tests/conftest.py` provides the `pg_engine` / `pg_async_engine` / `pg_async_session` /
+  `redis_client` fixtures every DB/Redis-touching test uses. Connection strings default to the
+  docker-compose service ports, overridable via `TEST_POSTGRES_DSN` / `TEST_POSTGRES_ASYNC_DSN` /
+  `TEST_REDIS_URL` env vars.
+- Run with `pytest-xdist` (`uv run pytest tests/ -n auto`) for parallelism — safe because
+  `tests/conftest.py` gives each xdist worker its own Postgres schema (via `search_path`) and Redis
+  logical DB index, both derived from the worker id, so workers never see each other's data despite
+  sharing the same containers. Within one worker, each test gets a fresh schema / flushed Redis DB.
+- Still prefer minimal fakes over mocking libraries for things that aren't a real backing service (see
+  `FakeMessage` in `tests/consumer/test_dedup_consumer.py`, standing in for a `confluent_kafka.Message`
+  object, not a service) — a 10-line fake matching the exact subset of the real API used is easier to
+  read and trust than a `unittest.mock.MagicMock` with asserted call patterns.
+- Kafka is the one dependency still not exercised by the automated suite — producer/consumer code
+  talking to a real broker is verified manually against the docker-compose stack (see
+  `docs/tasks/completed/T-17-docker-image-upgrades.md`), not run in CI; Kafka has no first-party
+  GitHub Actions service-container support and is meaningfully more fragile to run ad hoc than
+  Postgres/Redis.
 - Test file layout mirrors `src/trade_pipeline/` exactly — `tests/<package>/test_<module>.py`.
 - When a security property is being tested (e.g. JWT `alg:none` / algorithm-confusion attacks in
   `tests/api/auth/test_jwt_tokens.py`), forge the attack payload by hand rather than through the

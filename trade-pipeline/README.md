@@ -70,6 +70,8 @@ Full rationale for each of these is in [`../docs/DECISIONS.md`](../docs/DECISION
 | Temporal for enrichment orchestration, not the ingestion hot path | Right tool for a bounded multi-service call with retries; wrong tool (per-workflow overhead) for a tight per-Kafka-message loop. |
 | Dagster for cold-storage batching, not live consumption | Scheduled/triggered batch materialization with its own observability — a different shape of problem than the consumer's per-message loop. |
 | Feature flags in Postgres, not env vars | Needs to flip at runtime without redeploying/restarting every API worker; the table is genuinely the source of truth — a direct DB write works identically to the admin API. |
+| `trades` range-partitioned by `timestamp` | Append-heavy time-series table — partitioning keeps each partition small and turns "drop old data" into an instant `DETACH PARTITION` instead of a slow `DELETE`. |
+| Real Postgres/Redis in tests, not SQLite/fakeredis | What actually made partitioning possible — SQLite can't autoincrement the composite primary key partitioning requires. `pytest-xdist` keeps it fast via per-worker schema/DB isolation. |
 
 ## What I'd change at 10x scale
 
@@ -85,6 +87,9 @@ Full rationale for each of these is in [`../docs/DECISIONS.md`](../docs/DECISION
 - Multiple API worker processes behind a load balancer — the Redis-backed rate limiter and refresh
   token store already work correctly across multiple workers (unlike `slowapi`'s default in-process
   storage, which was one of the reasons it was dropped).
+- **Automatic partition rotation** — `trades` is already range-partitioned by `timestamp` (see the
+  decisions table above), but pruning partitions older than N months on a schedule isn't built yet;
+  a natural fit for a Dagster asset, similar in shape to the archival job.
 
 ## Python version notes (3.11 → 3.14)
 
@@ -152,18 +157,25 @@ psql -c "UPDATE feature_flags SET enabled = true WHERE name = 'enrichment_enable
 
 ## Development
 
+The test suite talks to real Postgres and Redis (`docker-compose.yml` services) — not SQLite/fakeredis
+— so bring those up first:
+
 ```bash
-make install   # uv sync
-make lint      # ruff check .
-make test      # pytest tests/ -q
-make audit     # pip-audit
-make check     # all three
+make services-up  # docker compose up -d postgres redis
+make install      # uv sync
+make lint         # ruff check .
+make test         # pytest tests/ -n auto -q  (pytest-xdist, isolated per worker)
+make audit        # pip-audit
+make check        # lint + test + audit
 ```
 
 No local `make`? Run the `uv run ...` command inside each target directly — the Makefile is a thin
-wrapper, not where any logic lives. CI (`.github/workflows/ci.yml`) runs `make check` across Python
-3.11–3.14 on every push/PR to `main`/`develop`.
+wrapper, not where any logic lives. CI (`.github/workflows/ci.yml`) runs the same checks across Python
+3.11–3.14 on every push/PR to `main`/`develop`, with Postgres and Redis as GitHub Actions service
+containers (Kafka isn't — producer/consumer code touching a real broker is verified manually, see
+[`../docs/tasks/completed/T-17-docker-image-upgrades.md`](../docs/tasks/completed/T-17-docker-image-upgrades.md)).
 
-As of the last update to this README: **81 tests passing**, ruff clean, no known vulnerabilities,
-zero deprecation warnings (enforced via `filterwarnings = ["error::DeprecationWarning", ...]` in
-`pyproject.toml` — see [`../docs/CODING_STANDARDS.md`](../docs/CODING_STANDARDS.md)).
+As of the last update to this README: **89 tests passing** (serially or under `-n auto`), ruff clean,
+no known vulnerabilities, zero deprecation warnings (enforced via
+`filterwarnings = ["error::DeprecationWarning", ...]` in `pyproject.toml` — see
+[`../docs/CODING_STANDARDS.md`](../docs/CODING_STANDARDS.md)).

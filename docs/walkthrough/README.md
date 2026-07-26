@@ -17,7 +17,7 @@ navigation at the top and bottom so you can read it start to finish or jump arou
 |---|---|---|
 | 1 | [Project layout](01-project-layout.md) | Repo structure, docs system, how tasks/features/decisions relate |
 | 2 | [Producer](02-producer.md) | Kafka producer, fake trade generation, duplicate simulation |
-| 3 | [Consumer & storage](03-consumer-and-storage.md) | Redis dedup, manual offset commit, Postgres sink |
+| 3 | [Consumer & storage](03-consumer-and-storage.md) | Redis dedup, manual offset commit, Postgres sink + partitioning |
 | 4 | [API & auth](04-api-and-auth.md) | FastAPI app, JWT RS256, refresh tokens, middleware, rate limiting |
 | 5 | [Enrichment](05-enrichment.md) | Hand-rolled circuit breaker vs Temporal workflow, side by side |
 | 6 | [Dagster archival](06-dagster-archival.md) | Cold-storage batch job, zstd compression, resource-injected DB engine |
