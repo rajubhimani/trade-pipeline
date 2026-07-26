@@ -26,6 +26,18 @@ _SECURITY_HEADERS = {
     b"referrer-policy": b"strict-origin-when-cross-origin",
 }
 
+# FastAPI's auto-generated /docs and /redoc pages load Swagger UI/Redoc's
+# JS+CSS from a CDN and run an inline <script> to initialize it — both
+# blocked outright by the strict `default-src 'self'` CSP above (no
+# 'unsafe-inline', no CDN origin allowed), which renders the page as a
+# blank `<div id="swagger-ui">` with no visible error (confirmed: the HTML
+# itself loads fine, the browser just silently refuses the CSP-violating
+# script/style). These are FastAPI's own introspection/dev-docs endpoints,
+# not part of the hardened application surface, so they're excluded from
+# the strict policy rather than weakening it (e.g. adding 'unsafe-inline')
+# for every real endpoint just to accommodate the docs UI.
+_UNRESTRICTED_CSP_PATHS = frozenset({"/docs", "/redoc"})
+
 
 class SecurityHeadersMiddleware:
     """Adds a fixed set of security headers to every HTTP response."""
@@ -38,10 +50,16 @@ class SecurityHeadersMiddleware:
             await self.app(scope, receive, send)
             return
 
+        headers_to_add = _SECURITY_HEADERS
+        if scope["path"] in _UNRESTRICTED_CSP_PATHS:
+            headers_to_add = {
+                k: v for k, v in _SECURITY_HEADERS.items() if k != b"content-security-policy"
+            }
+
         async def send_with_headers(message: Message) -> None:
             if message["type"] == "http.response.start":
                 headers = list(message.get("headers", []))
-                headers.extend(_SECURITY_HEADERS.items())
+                headers.extend(headers_to_add.items())
                 message = {**message, "headers": headers}
             await send(message)
 
