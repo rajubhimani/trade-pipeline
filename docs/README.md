@@ -18,3 +18,6 @@ Managed primarily via the `.claude/skills/` skills (`add-task`, `update-task`, `
   documentation-first workflow, security-sensitive code rules.
 - **GIT_PRACTICES.md** — branching (`main`/`develop`), Conventional Commits format, what never gets
   committed, pre-push checklist.
+- **[walkthrough/](walkthrough/README.md)** — guided code tour with data-flow diagrams and clickable
+  `file.py#L37`-style code references. Start here to actually read/understand the code, not just its
+  design intent.
