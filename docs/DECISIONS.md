@@ -176,3 +176,25 @@ new `ApiEnvSettings` (the class that reads paths/CORS from the environment) — 
 the same dependency-injection pattern already used elsewhere in this codebase (`create_app` vs
 `build_production_app`). Only `load_api_settings()`, the real production path, touches
 `ApiEnvSettings` at all.
+
+### One Dockerfile / one image for every entrypoint, not four
+Producer, consumer, API, and Dagster all share the exact same `pyproject.toml`/`uv.lock` dependency
+set — a single multi-stage image with the entrypoint selected via `command:` override per
+docker-compose service is the correct pattern here, confirmed via research to be the standard
+recommendation (not an anti-pattern) for a single-package project with multiple entrypoints. Four
+near-identical Dockerfiles would only add build/maintenance overhead with no real benefit at this
+project's scale.
+
+### `--locked`, not `--frozen`, in the Dockerfile's `uv sync` calls
+`--frozen` (older, still-common guidance) skips lockfile validation silently — a stale `uv.lock`
+relative to `pyproject.toml` would build anyway. `--locked` fails the build outright in that case,
+which is what you actually want for a CI/production image: a lockfile drift should be a loud build
+failure, not a silent behavioral mismatch shipped to production.
+
+### Dockerfile builds a runnable image, but isn't wired into docker-compose as a running service
+`docker-compose.yml` still brings up infrastructure only (Kafka, Redis, Postgres) — the application
+image is built and verified runnable (producer/consumer/API/Dagster all confirmed working inside it
+against the real compose services), but running the app itself stays on `uv run` locally, preserving
+the fast edit-run development loop this project already relies on. Wiring the app image into compose
+as an always-running service is a natural next step if that loop ever needs to change, not required
+to answer "does this project have a working Dockerfile."

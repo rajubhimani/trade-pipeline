@@ -143,6 +143,20 @@ uv run dagster dev -m trade_pipeline.dagster_pipeline.definitions
 Login with the demo account (`demo` / `trade-pipeline-demo` — see `api/auth/users.py`), then call
 `GET /trades` with the returned bearer token.
 
+### Running via Docker instead
+
+A [`Dockerfile`](Dockerfile) builds a single image shared by every entrypoint — `docker-compose.yml`
+still runs infra only (see [DECISIONS.md](../docs/DECISIONS.md)), so run the app container(s)
+alongside it explicitly:
+
+```bash
+docker build -t trade-pipeline .
+docker run --rm --network trade-pipeline_default \
+  -e KAFKA_BOOTSTRAP_SERVERS=kafka:29092 \
+  trade-pipeline python -m trade_pipeline.producer.fake_trades
+# swap the last line for the consumer / uvicorn / dagster commands above to run each component
+```
+
 ## Feature flags
 
 Flags live in Postgres (`feature_flags` table), not env vars — they flip at runtime, no redeploy or
