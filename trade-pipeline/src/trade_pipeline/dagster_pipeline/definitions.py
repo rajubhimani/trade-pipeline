@@ -21,9 +21,11 @@ from sqlalchemy.orm import sessionmaker
 
 from trade_pipeline.common.config import load_config
 from trade_pipeline.consumer.postgres_sink import make_engine
+from trade_pipeline.dagster_pipeline.aggregation import aggregate_archive_directory
 from trade_pipeline.dagster_pipeline.archival import archive_pending_trades
 
 DEFAULT_ARCHIVE_DIR = Path(__file__).parent.parent.parent.parent / "archive"
+DEFAULT_AGGREGATES_DIR = DEFAULT_ARCHIVE_DIR / "aggregates"
 
 
 class DbEngineResource(dg.ConfigurableResource):
@@ -35,6 +37,10 @@ class DbEngineResource(dg.ConfigurableResource):
 
 class ArchiveDirResource(dg.ConfigurableResource):
     path: str = str(DEFAULT_ARCHIVE_DIR)
+
+
+class AggregatesDirResource(dg.ConfigurableResource):
+    path: str = str(DEFAULT_AGGREGATES_DIR)
 
 
 @dg.asset(description="Batch not-yet-archived trades, zstd-compress, write to archive/")
@@ -57,11 +63,38 @@ def archived_trades(
     )
 
 
+@dg.asset(
+    description="Aggregate volume-by-broker and count-by-symbol over every archived batch",
+    deps=[archived_trades],
+)
+def daily_aggregate(
+    archive_dir: ArchiveDirResource, aggregates_dir: AggregatesDirResource
+) -> dg.MaterializeResult:
+    result = aggregate_archive_directory(
+        Path(archive_dir.path), output_dir=Path(aggregates_dir.path)
+    )
+    return dg.MaterializeResult(
+        metadata={
+            "total_trades": result.total_trades,
+            "volume_by_broker": result.volume_by_broker,
+            "count_by_symbol": result.count_by_symbol,
+            "output_path": str(result.output_path) if result.output_path else None,
+        }
+    )
+
+
 archival_job = dg.define_asset_job("archival_job", selection=[archived_trades])
 
 archival_schedule = dg.ScheduleDefinition(
     job=archival_job,
     cron_schedule="* * * * *",  # every minute — a demo cadence, not a scale-tuned one
+)
+
+aggregation_job = dg.define_asset_job("aggregation_job", selection=[daily_aggregate])
+
+aggregation_schedule = dg.ScheduleDefinition(
+    job=aggregation_job,
+    cron_schedule="0 0 * * *",  # daily, per the plan's own naming for this job
 )
 
 
@@ -71,10 +104,11 @@ def _production_dsn() -> str:
 
 
 defs = dg.Definitions(
-    assets=[archived_trades],
-    schedules=[archival_schedule],
+    assets=[archived_trades, daily_aggregate],
+    schedules=[archival_schedule, aggregation_schedule],
     resources={
         "db_engine": DbEngineResource(dsn=_production_dsn()),
         "archive_dir": ArchiveDirResource(),
+        "aggregates_dir": AggregatesDirResource(),
     },
 )
