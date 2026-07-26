@@ -26,10 +26,13 @@ deployment target (see `../ARCHITECTURE.md` non-goals).
   `../DECISIONS.md`).
 - Dependencies pinned to lower bounds only (`>=`), resolved/locked by `uv sync` into `uv.lock` so the
   exact resolved graph is reproducible.
-- `docker-compose.yml` uses `confluentinc/cp-kafka`/`cp-zookeeper` 7.7.1, `redis:7.4-alpine`,
-  `postgres:17-alpine`. Named volume for Postgres data only — Kafka/Redis are ephemeral by design for
-  a dev environment that gets `docker-compose down -v` reset regularly (see Week 1-2 project track in
-  the source HTML plan).
+- `docker-compose.yml` originally used `confluentinc/cp-kafka`/`cp-zookeeper` 7.7.1, `redis:7.4-alpine`,
+  `postgres:17-alpine`; upgraded to `apache/kafka:4.3.1` (KRaft, no Zookeeper), `redis:8.8-alpine`,
+  `postgres:18.4-alpine` — current stable pinned versions, each verified against Docker Hub's registry
+  API (not assumed) before adopting. See `../DECISIONS.md` "Kafka KRaft mode, not Zookeeper" and
+  "Docker image versions verified against the registry, not guessed." Named volume for Postgres data
+  only — Kafka/Redis are ephemeral by design for a dev environment that gets `docker-compose down -v`
+  reset regularly (see Week 1-2 project track in the source HTML plan).
 
 ## Python version notes
 

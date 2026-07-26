@@ -87,3 +87,28 @@ Same reasoning as `api/main.py`'s `create_app()` factory (see above): `DbEngineR
 `dg.materialize()` swap in a SQLite in-memory engine for tests, so tests exercise the real
 asset/resource wiring end to end instead of only the extracted pure logic. Confirmed working via an
 actual `dg.materialize()` call before committing to the design.
+
+### Feature flags stored in Postgres, not env vars
+A flag that only changes on redeploy isn't really a runtime toggle — it needs to flip without
+restarting every API worker process. A `feature_flags` table read through the same per-request
+`AsyncSession` already in use elsewhere gives that for free, with no separate config service and no
+cache-invalidation scheme to build. No caching layer in front of the reads either: a primary-key
+lookup is cheap enough that this project's request volume doesn't justify the staleness window a cache
+would introduce — revisit this specific tradeoff first if it ever became a hot path at real scale.
+
+### Kafka KRaft mode, not Zookeeper
+Zookeeper-based Kafka is deprecated (removed as of Kafka 4.x) — the official `apache/kafka` image
+supports KRaft (broker+controller combined in one process) natively, which is both the current
+upstream direction and simpler for a single-node local dev setup: one service instead of two, no
+separate Zookeeper connection string to configure or fail independently. Verified the KRaft config
+actually starts cleanly and carries a real produce→consume→Postgres write end to end before adopting
+it (see `docker-compose.yml`).
+
+### Docker image versions verified against the registry, not guessed
+`apache/kafka:4.3.1`, `redis:8.8-alpine`, `postgres:18.4-alpine` were each checked against Docker
+Hub's registry API — confirming the pinned tag's digest matches that image's own `latest` tag — before
+being written into `docker-compose.yml`, rather than assumed from memory or training-data cutoff (see
+`feedback_verify_current_best_practices` in this project's standing practice). This caught a real
+breaking change in the process: the Postgres 18 image changed its expected data-directory mount point
+(`/var/lib/postgresql` instead of `/var/lib/postgresql/data`), which would have silently failed to
+start with the old volume path.
