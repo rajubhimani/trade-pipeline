@@ -27,6 +27,10 @@ dependencies = [
     "temporalio>=1.9",
     "dagster>=1.9",
     "dagster-webserver>=1.9",
+    # 3.11-3.13 fallback for dagster_pipeline/archival.py's compression.zstd
+    # (3.14 stdlib) usage — see that module for the compatibility shim. Marker
+    # keeps this out of 3.14 environments entirely, where it's not needed.
+    "zstandard>=0.23; python_version < '3.14'",
 ]
 
 [dependency-groups]

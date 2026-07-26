@@ -18,11 +18,26 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-# compression.zstd is 3.14 stdlib. 3.11 fallback: import zstandard as zstd,
-# then zstd.ZstdCompressor().compress(data) / ZstdDecompressor().decompress(data)
-# — different API shape, not a drop-in, which is why this project targets
-# 3.14 for the code path that actually runs this job.
-from compression import zstd
+try:
+    from compression import zstd  # 3.14 stdlib
+except ImportError:  # pragma: no cover — exercised by the 3.11-3.13 CI matrix legs
+    # zstandard (PyPI) has a different API shape (ZstdCompressor/ZstdDecompressor
+    # objects, not module-level functions) — wrapped here so the rest of this
+    # module can call zstd.compress()/zstd.decompress() either way. This is a
+    # real runtime fallback, not just a comment: this project's CI matrix
+    # (.github/workflows/ci.yml) actually runs the full test suite on 3.11-3.14,
+    # so an import that only works on 3.14 would break three of the four legs.
+    import zstandard as _zstandard
+
+    class zstd:  # deliberately mimics the stdlib module's name/API
+        @staticmethod
+        def compress(data: bytes) -> bytes:
+            return _zstandard.ZstdCompressor().compress(data)
+
+        @staticmethod
+        def decompress(data: bytes) -> bytes:
+            return _zstandard.ZstdDecompressor().decompress(data)
+
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 

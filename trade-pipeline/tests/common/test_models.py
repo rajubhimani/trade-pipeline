@@ -1,5 +1,7 @@
-from copy import replace
+import sys
 from decimal import Decimal
+
+import pytest
 
 from trade_pipeline.common.models import TradeEvent, new_trade_id
 
@@ -31,7 +33,10 @@ def test_event_is_frozen():
         raise AssertionError("TradeEvent should be immutable")
 
 
+@pytest.mark.skipif(sys.version_info < (3, 13), reason="copy.replace() needs 3.13+")
 def test_copy_replace_updates_single_field():
+    from copy import replace
+
     event = make_event(qty=10)
     updated = replace(event, qty=20)
     assert updated.qty == 20
