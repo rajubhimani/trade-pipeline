@@ -20,8 +20,9 @@ navigation at the top and bottom so you can read it start to finish or jump arou
 | 3 | [Consumer & storage](03-consumer-and-storage.md) | Redis dedup, manual offset commit, Postgres sink |
 | 4 | [API & auth](04-api-and-auth.md) | FastAPI app, JWT RS256, refresh tokens, middleware, rate limiting |
 | 5 | [Enrichment](05-enrichment.md) | Hand-rolled circuit breaker vs Temporal workflow, side by side |
-| 6 | [Python version comparisons](06-python-version-comparisons.md) | The old-vs-new demo module, feature by feature |
-| 7 | [Testing & tooling](07-testing-and-tooling.md) | How the test suite is organized, ruff/pytest config, how to run everything |
+| 6 | [Dagster archival](06-dagster-archival.md) | Cold-storage batch job, zstd compression, resource-injected DB engine |
+| 7 | [Python version comparisons](07-python-version-comparisons.md) | The old-vs-new demo module, feature by feature |
+| 8 | [Testing & tooling](08-testing-and-tooling.md) | How the test suite is organized, ruff/pytest config, how to run everything |
 
 ## System overview
 
@@ -39,6 +40,7 @@ flowchart LR
     end
     subgraph Storage
         PG[(Postgres<br/>trades table)]
+        ARC[(archive/<br/>zstd files)]
     end
     subgraph Serve
         API[FastAPI<br/>api/main.py]
@@ -47,6 +49,9 @@ flowchart LR
     subgraph Enrichment
         HR[Hand-rolled<br/>circuit breaker]
         TW[Temporal<br/>workflow]
+    end
+    subgraph Batch
+        DAG[Dagster asset<br/>archived_trades]
     end
 
     P -->|produce, ~5% dupes| K
@@ -57,6 +62,8 @@ flowchart LR
     API --> AUTH
     API -.optional fan-out.-> HR
     API -.optional fan-out.-> TW
+    DAG -->|SELECT WHERE archived=false, every minute| PG
+    DAG -->|zstd compress| ARC
 
     click P "02-producer.md" "Producer walkthrough"
     click C "03-consumer-and-storage.md" "Consumer walkthrough"
@@ -64,6 +71,8 @@ flowchart LR
     click API "04-api-and-auth.md" "API walkthrough"
     click HR "05-enrichment.md" "Enrichment walkthrough"
     click TW "05-enrichment.md" "Enrichment walkthrough"
+    click DAG "06-dagster-archival.md" "Dagster archival walkthrough"
+    click ARC "06-dagster-archival.md" "Dagster archival walkthrough"
 ```
 
 Enrichment isn't wired into the live `GET /trades` endpoint yet (see

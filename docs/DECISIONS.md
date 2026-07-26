@@ -73,3 +73,17 @@ processed, not against the consumer's last-committed offset. The committed offse
 this consumer's own commit-batching/timing behavior, muddying "is the pipeline falling behind" with
 "how does this consumer commit" — measuring against the message actually being handled right now
 gives a cleaner, more directly interpretable signal that moves smoothly with real throughput.
+
+### `archived` boolean column over a separate high-water-mark table
+The Dagster archival job (T-8) needs to find "not yet archived" trades. A boolean column
+(`WHERE archived = false ORDER BY id LIMIT :n`) is simpler to reason about and self-correcting on
+failure than a high-water-mark table: rows are only marked `archived` *after* the compressed file is
+successfully written, so a crash mid-run just leaves those rows eligible for the next run — no
+separate recovery logic needed. A high-water-mark advanced before confirming the write could silently
+skip rows on crash.
+
+### DB engine injected via a Dagster resource, not loaded from config inside the asset
+Same reasoning as `api/main.py`'s `create_app()` factory (see above): `DbEngineResource` lets
+`dg.materialize()` swap in a SQLite in-memory engine for tests, so tests exercise the real
+asset/resource wiring end to end instead of only the extracted pure logic. Confirmed working via an
+actual `dg.materialize()` call before committing to the design.

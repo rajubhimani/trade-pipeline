@@ -10,7 +10,7 @@ instead of under either.
 
 from decimal import Decimal
 
-from sqlalchemy import DateTime, Numeric, String, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, Numeric, String, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -29,3 +29,8 @@ class Trade(Base):
     qty: Mapped[int]
     price: Mapped[Decimal] = mapped_column(Numeric(18, 4))
     timestamp: Mapped[object] = mapped_column(DateTime(timezone=True))
+    # Set True by the Dagster cold-storage archival job once a row has been
+    # written to a compressed archive file — see dagster_pipeline/archival.py.
+    # Python-side default only (no server_default): every insert already goes
+    # through the ORM (postgres_sink.write_trade), so this is always set.
+    archived: Mapped[bool] = mapped_column(Boolean, default=False, index=True)

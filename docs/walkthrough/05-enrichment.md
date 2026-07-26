@@ -1,4 +1,4 @@
-[Index](README.md) · ← Previous: [API & auth](04-api-and-auth.md) · Next → [Python version comparisons](06-python-version-comparisons.md)
+[Index](README.md) · ← Previous: [API & auth](04-api-and-auth.md) · Next → [Dagster archival](06-dagster-archival.md)
 
 ---
 
@@ -56,7 +56,7 @@ flowchart TD
   sibling cancellation is the wrong tool when the requirement is "return partial results per service."
   (The `TaskGroup`-vs-`gather` comparison itself lives in
   [`version_compat_demo.py`](../../trade-pipeline/src/trade_pipeline/common/version_compat_demo.py) —
-  see [page 6](06-python-version-comparisons.md).)
+  see [page 6](07-python-version-comparisons.md).)
 - [`_retrying_call`](../../trade-pipeline/src/trade_pipeline/enrichment/hand_rolled.py#L32) — wraps a
   service call with `tenacity`'s `retry_if_exception_type` scoped to timeout-shaped exceptions only,
   matching the plan's explicit callout that retrying a "bad request" is wrong.
@@ -106,4 +106,4 @@ full workflow-level test coverage rather than settling for activity-only tests.
 covers the activities with zero network dependency, calling them as plain async functions.
 
 ---
-[Index](README.md) · ← Previous: [API & auth](04-api-and-auth.md) · Next → [Python version comparisons](06-python-version-comparisons.md)
+[Index](README.md) · ← Previous: [API & auth](04-api-and-auth.md) · Next → [Dagster archival](06-dagster-archival.md)

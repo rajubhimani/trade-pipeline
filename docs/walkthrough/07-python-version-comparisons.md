@@ -1,4 +1,4 @@
-[Index](README.md) · ← Previous: [Enrichment](05-enrichment.md) · Next → [Testing & tooling](07-testing-and-tooling.md)
+[Index](README.md) · ← Previous: [Dagster archival](06-dagster-archival.md) · Next → [Testing & tooling](08-testing-and-tooling.md)
 
 ---
 
@@ -66,4 +66,4 @@ runs both sides of comparisons 1–3 and asserts they produce equivalent behavio
 replacement, not just shorter syntax that might work differently.
 
 ---
-[Index](README.md) · ← Previous: [Enrichment](05-enrichment.md) · Next → [Testing & tooling](07-testing-and-tooling.md)
+[Index](README.md) · ← Previous: [Dagster archival](06-dagster-archival.md) · Next → [Testing & tooling](08-testing-and-tooling.md)

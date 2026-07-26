@@ -1,4 +1,4 @@
-[Index](README.md) · ← Previous: [Python version comparisons](06-python-version-comparisons.md) · Next → [Index](README.md)
+[Index](README.md) · ← Previous: [Python version comparisons](07-python-version-comparisons.md) · Next → [Index](README.md)
 
 ---
 
@@ -75,4 +75,4 @@ this purpose. Note: `ASGITransport` does not fire app lifespan events, which is 
 startup/shutdown hook.
 
 ---
-[Index](README.md) · ← Previous: [Python version comparisons](06-python-version-comparisons.md) · Next → [Index](README.md)
+[Index](README.md) · ← Previous: [Python version comparisons](07-python-version-comparisons.md) · Next → [Index](README.md)

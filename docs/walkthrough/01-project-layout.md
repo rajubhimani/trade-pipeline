@@ -62,7 +62,7 @@ trade-pipeline/
     enrichment/     — Component 4: hand-rolled + Temporal   → page 5
     common/         — shared models, config, db_models, version_compat_demo → pages 3, 6
     observability/  — Component 5: consumer Prometheus metrics → page 3
-    dagster_pipeline/ — scaffolded, not yet built (see tasks/backlog)
+    dagster_pipeline/ — Component 6: cold-storage archival job → page 6
   tests/                          — mirrors src/ layout exactly → page 7
 ```
 
