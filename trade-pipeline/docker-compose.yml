@@ -61,8 +61,37 @@ services:
       timeout: 5s
       retries: 10
 
-  # --- Application services, all sharing the one Dockerfile image (see its
-  # own header comment) — `command:` alone selects which entrypoint runs. ---
+  # Single-container Temporal dev server (embeds the `temporal` CLI's
+  # `server start-dev`, sqlite-backed — no separate Cassandra/MySQL/Postgres
+  # needed for Temporal itself, matching how kafka/redis/postgres above are
+  # each single-node dev setups too). gRPC on 7233 (what the worker/API
+  # connect to), Web UI on 8233.
+  temporal:
+    image: temporalio/temporal:latest
+    command: server start-dev --ip 0.0.0.0 --db-filename /home/temporal/temporal.db
+    ports:
+      - "7233:7233"
+      - "8233:8233"
+    volumes:
+      # The image runs as uid 1000 ("temporal"), whose home dir is the only
+      # path pre-owned by that user — a named volume mounted at a fresh path
+      # like /data is created root:root, which the process then can't write
+      # into (surfaces as a misleading SQLite "out of memory (14)" error).
+      - temporal-data:/home/temporal
+    healthcheck:
+      # Same binary as the server itself (`temporal` CLI ships in this
+      # image) — succeeds only once the frontend service is actually
+      # accepting requests, not just once the process has started.
+      test: ["CMD", "temporal", "operator", "cluster", "health", "--address", "localhost:7233"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+
+  # --- Application services. api/producer/consumer share the core Dockerfile
+  # image (see its own header comment) — `command:` selects the entrypoint.
+  # dagster and temporal-worker each have their own Dockerfile (Dockerfile.
+  # dagster / Dockerfile.temporal) so their SDKs don't bloat the core image. ---
 
   # One-shot: generates the JWT RS256 keypair into the `keys` volume if it
   # doesn't already exist (see scripts/generate_keys.py — replaces the
@@ -133,8 +162,9 @@ services:
         condition: service_completed_successfully
 
   dagster:
-    build: .
-    command: dagster dev -m trade_pipeline.dagster_pipeline.definitions --host 0.0.0.0
+    build:
+      context: .
+      dockerfile: Dockerfile.dagster
     ports:
       - "3000:3000"
     environment:
@@ -145,7 +175,21 @@ services:
       migrate:
         condition: service_completed_successfully
 
+  temporal-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.temporal
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      temporal:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
 volumes:
   pgdata:
   keys:
   archive:
+  temporal-data:

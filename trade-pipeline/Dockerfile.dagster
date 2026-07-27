@@ -1,0 +1,46 @@
+# Separate image for the dagster service — split out of the core
+# api/producer/consumer image (Dockerfile) specifically so dagster's own SDK
+# weight (dagster, dagster-webserver, zstandard — the "dagster" dependency
+# group in pyproject.toml) doesn't end up in images that never import it.
+# No Node/dashboard-builder stage here: dagster_pipeline/ never imports
+# trade_pipeline.api, so it has nothing to serve the built dashboard for.
+#
+# Otherwise the same multi-stage uv pattern as Dockerfile — see that file's
+# header comment for the reasoning (builder resolves deps with cache mounts,
+# final stage copies just the built venv + source into a plain slim image).
+
+FROM ghcr.io/astral-sh/uv:python3.14-bookworm-slim AS builder
+
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_PYTHON_DOWNLOADS=0
+
+WORKDIR /app
+
+# Dependencies first, without the project itself, so this layer only
+# rebuilds when pyproject.toml/uv.lock change, not on every source edit.
+RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=bind,source=uv.lock,target=uv.lock \
+    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+    uv sync --locked --no-default-groups --group dagster --no-install-project --no-editable
+
+COPY . /app
+
+# --locked (not --frozen): fails the build if uv.lock is stale relative to
+# pyproject.toml, rather than silently building from a mismatched lockfile.
+# --group dagster: base [project.dependencies] plus the dagster group only —
+# no temporal, no dev/test tooling.
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --locked --no-default-groups --group dagster --no-editable
+
+FROM python:3.14-slim-bookworm
+
+WORKDIR /app
+COPY --from=builder /app/.venv /app/.venv
+COPY --from=builder /app/src /app/src
+
+# PATH activation, not `uv run`, at runtime — uv isn't needed once the venv
+# is built, so it isn't in this final image at all.
+ENV PATH="/app/.venv/bin:$PATH"
+
+CMD ["dagster", "dev", "-m", "trade_pipeline.dagster_pipeline.definitions", "--host", "0.0.0.0"]

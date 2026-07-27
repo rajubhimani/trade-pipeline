@@ -2775,8 +2775,6 @@ dependencies = [
     { name = "asyncpg" },
     { name = "confluent-kafka" },
     { name = "cryptography" },
-    { name = "dagster" },
-    { name = "dagster-webserver" },
     { name = "fastapi" },
     { name = "prometheus-client" },
     { name = "prometheus-fastapi-instrumentator" },
@@ -2787,14 +2785,19 @@ dependencies = [
     { name = "redis" },
     { name = "sqlalchemy", extra = ["asyncio"] },
     { name = "structlog" },
-    { name = "temporalio" },
     { name = "tenacity" },
     { name = "uvicorn", extra = ["standard"] },
-    { name = "zstandard", marker = "python_full_version < '3.14'" },
 ]
 
 [package.dev-dependencies]
+dagster = [
+    { name = "dagster" },
+    { name = "dagster-webserver" },
+    { name = "zstandard", marker = "python_full_version < '3.14'" },
+]
 dev = [
+    { name = "dagster" },
+    { name = "dagster-webserver" },
     { name = "httpx" },
     { name = "mypy" },
     { name = "pip-audit" },
@@ -2803,6 +2806,11 @@ dev = [
     { name = "pytest-cov" },
     { name = "pytest-xdist" },
     { name = "ruff" },
+    { name = "temporalio" },
+    { name = "zstandard", marker = "python_full_version < '3.14'" },
+]
+temporal = [
+    { name = "temporalio" },
 ]
 
 [package.metadata]
@@ -2812,8 +2820,6 @@ requires-dist = [
     { name = "asyncpg", specifier = ">=0.30" },
     { name = "confluent-kafka", specifier = ">=2.6" },
     { name = "cryptography", specifier = ">=43" },
-    { name = "dagster", specifier = ">=1.9" },
-    { name = "dagster-webserver", specifier = ">=1.9" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "prometheus-client", specifier = ">=0.21" },
     { name = "prometheus-fastapi-instrumentator", specifier = ">=7.0" },
@@ -2824,14 +2830,19 @@ requires-dist = [
     { name = "redis", specifier = ">=5.2" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0" },
     { name = "structlog", specifier = ">=24.4" },
-    { name = "temporalio", specifier = ">=1.9" },
     { name = "tenacity", specifier = ">=9.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32" },
-    { name = "zstandard", marker = "python_full_version < '3.14'", specifier = ">=0.23" },
 ]
 
 [package.metadata.requires-dev]
+dagster = [
+    { name = "dagster", specifier = ">=1.9" },
+    { name = "dagster-webserver", specifier = ">=1.9" },
+    { name = "zstandard", marker = "python_full_version < '3.14'", specifier = ">=0.23" },
+]
 dev = [
+    { name = "dagster", specifier = ">=1.9" },
+    { name = "dagster-webserver", specifier = ">=1.9" },
     { name = "httpx", specifier = ">=0.28" },
     { name = "mypy", specifier = ">=1.13" },
     { name = "pip-audit", specifier = ">=2.7" },
@@ -2840,7 +2851,10 @@ dev = [
     { name = "pytest-cov", specifier = ">=6.0" },
     { name = "pytest-xdist", specifier = ">=3.6" },
     { name = "ruff", specifier = ">=0.8" },
+    { name = "temporalio", specifier = ">=1.9" },
+    { name = "zstandard", marker = "python_full_version < '3.14'", specifier = ">=0.23" },
 ]
+temporal = [{ name = "temporalio", specifier = ">=1.9" }]
 
 [[package]]
 name = "types-protobuf"

@@ -25,15 +25,13 @@ dependencies = [
     "prometheus-client>=0.21",
     "tenacity>=9.0",
     "aiohttp>=3.10",
-    "temporalio>=1.9",
-    "dagster>=1.9",
-    "dagster-webserver>=1.9",
-    # 3.11-3.13 fallback for dagster_pipeline/archival.py's compression.zstd
-    # (3.14 stdlib) usage — see that module for the compatibility shim. Marker
-    # keeps this out of 3.14 environments entirely, where it's not needed.
-    "zstandard>=0.23; python_version < '3.14'",
 ]
 
+# dagster/temporal split into their own groups (not base dependencies) so the
+# api/producer/consumer image doesn't carry either SDK — see Dockerfile vs
+# Dockerfile.dagster. Neither group is included by default (no
+# tool.uv.default-groups override), so a plain `uv sync --no-default-groups`
+# gets base deps only; `--group dagster` / `--group temporal` opt in.
 [dependency-groups]
 dev = [
     "pytest>=8.3",
@@ -44,6 +42,19 @@ dev = [
     "pip-audit>=2.7",
     "httpx>=0.28",
     "pytest-xdist>=3.6",
+    {include-group = "dagster"},
+    {include-group = "temporal"},
+]
+dagster = [
+    "dagster>=1.9",
+    "dagster-webserver>=1.9",
+    # 3.11-3.13 fallback for dagster_pipeline/archival.py's compression.zstd
+    # (3.14 stdlib) usage — see that module for the compatibility shim. Marker
+    # keeps this out of 3.14 environments entirely, where it's not needed.
+    "zstandard>=0.23; python_version < '3.14'",
+]
+temporal = [
+    "temporalio>=1.9",
 ]
 
 [build-system]
