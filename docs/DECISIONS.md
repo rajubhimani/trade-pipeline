@@ -5,6 +5,29 @@ never re-derived from scratch — pulled from here, verified against current cod
 
 ---
 
+### `confluent-kafka`, not `kafka-python`
+`confluent-kafka` is a thin binding over `librdkafka` (the C client Confluent itself maintains) —
+`kafka-python` is a pure-Python reimplementation of the wire protocol. That difference shows up in
+exactly the places this project cares about:
+
+- **Throughput/latency** — `librdkafka` batches, compresses, and pipelines at the C layer;
+  `kafka-python`'s pure-Python protocol handling is measurably slower per message, which matters for
+  a producer intentionally simulating N broker feeds plus ~5% duplicate load (`producer/fake_trades.py`).
+- **Delivery semantics this project actually exercises** — manual offset commit only after a
+  successful Postgres write (`consumer/dedup_consumer.py`) needs precise, well-tested control over
+  `commit()`/auto-commit behavior. `librdkafka`'s consumer group and offset management is the
+  reference implementation every other client (including `kafka-python`) is validated against, not
+  the other way around.
+- **Native compression** — `compression.type` (see "Kafka's native `compression.type`" below) is a
+  `librdkafka` broker-negotiated feature; getting the same behavior in `kafka-python` means more
+  manual plumbing.
+- **Maintenance** — `kafka-python` went through a multi-year stretch with no releases before recent
+  revival; `confluent-kafka` ships in lockstep with `librdkafka` and current Kafka broker features.
+
+`kafka-python`'s real advantage — pure Python, no C toolchain/wheel to install — isn't a constraint
+here (the Dockerfile already builds from a full Python base image), so there's nothing on the other
+side of the trade-off to weigh against it.
+
 ### Redis SETNX for dedup, not a DB unique constraint
 Redis in-memory ops are O(1) and sub-millisecond, needed to keep pace with per-event Kafka consumption
 without becoming the bottleneck. A DB unique-constraint approach works but adds a round trip and a

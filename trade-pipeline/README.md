@@ -61,6 +61,7 @@ Full rationale for each of these is in [`../docs/DECISIONS.md`](../docs/DECISION
 | Decision | Why |
 |---|---|
 | Kafka, not RabbitMQ | Ordered, replayable log semantics per partition; consumer offset replay is what makes "never lose an event on crash" possible without a separate dead-letter/redelivery mechanism. |
+| `confluent-kafka`, not `kafka-python` | Thin binding over `librdkafka` (the reference C client) vs. a pure-Python protocol reimplementation — faster, more mature offset/consumer-group control, native `compression.type`. `kafka-python`'s main edge (no C toolchain to install) isn't a real constraint here. |
 | Redis `SETNX`-equivalent dedup, not a DB unique constraint | Sub-millisecond in-memory op keeps pace with per-event consumption; a DB round trip per duplicate is slower and noisier. |
 | RS256, not HS256, for JWT | Asymmetric — only the auth service needs the private key; services that only verify tokens need just the public key, smaller blast radius if one is compromised. |
 | Postgres (hot) + local zstd archive (cold), not ClickHouse | This is a learning/demo build at low volume — Postgres is genuinely queryable and keeps dependency count down. ClickHouse is the stated "what I'd change at 10x scale" answer (see below). |
