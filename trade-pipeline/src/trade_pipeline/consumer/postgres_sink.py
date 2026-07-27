@@ -22,7 +22,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 
-from trade_pipeline.common.db_models import Base, Trade
+from trade_pipeline.common.db_models import Trade
+from trade_pipeline.common.migrations import upgrade_to_head
 from trade_pipeline.common.models import TradeEvent
 from trade_pipeline.common.partitioning import ensure_partitions
 
@@ -47,11 +48,14 @@ def make_engine(dsn: str):
 
 
 def init_schema(engine) -> None:
-    Base.metadata.create_all(engine)
-    # trades is PARTITION BY RANGE (see Trade.__table_args__) — the ORM's
-    # create_all emits the parent table DDL but can't create child
-    # partitions on its own; without at least the DEFAULT partition, every
-    # insert would be rejected outright.
+    # Alembic (migrations/versions/0001_initial_schema.py) owns the table
+    # DDL — was `Base.metadata.create_all(engine)` before this project
+    # adopted Alembic for schema versioning.
+    upgrade_to_head(engine)
+    # trades is PARTITION BY RANGE (see Trade.__table_args__) — a migration
+    # can create the parent table DDL but not child partitions on its own;
+    # without at least the DEFAULT partition, every insert would be rejected
+    # outright.
     ensure_partitions(engine)
 
 

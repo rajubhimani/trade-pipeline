@@ -7,7 +7,7 @@ containers start concurrently, and the API has no schema-init call of its
 own (it only ever reads). A dedicated one-shot `migrate` service that both
 depend on (`condition: service_completed_successfully`) guarantees the
 schema and partitions exist before either touches Postgres, rather than
-relying on `create_all`/`ensure_partitions`'s idempotency to paper over the
+relying on Alembic's/`ensure_partitions`'s idempotency to paper over the
 race.
 """
 

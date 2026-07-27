@@ -67,6 +67,11 @@ FROM python:3.14-slim-bookworm
 WORKDIR /app
 COPY --from=builder /app/.venv /app/.venv
 COPY --from=builder /app/src /app/src
+# alembic.ini + migrations/ — common/migrations.upgrade_to_head resolves
+# alembic.ini relative to the repo root at runtime, so both must ship
+# alongside src/, not just get baked into the venv.
+COPY --from=builder /app/alembic.ini /app/alembic.ini
+COPY --from=builder /app/migrations /app/migrations
 
 # PATH activation, not `uv run`, at runtime — uv isn't needed once the venv
 # is built, so it isn't in this final image at all (smaller, one fewer

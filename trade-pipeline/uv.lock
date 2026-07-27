@@ -2771,6 +2771,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
+    { name = "alembic" },
     { name = "argon2-cffi" },
     { name = "asyncpg" },
     { name = "confluent-kafka" },
@@ -2816,6 +2817,7 @@ temporal = [
 [package.metadata]
 requires-dist = [
     { name = "aiohttp", specifier = ">=3.10" },
+    { name = "alembic", specifier = ">=1.13" },
     { name = "argon2-cffi", specifier = ">=23.1" },
     { name = "asyncpg", specifier = ">=0.30" },
     { name = "confluent-kafka", specifier = ">=2.6" },

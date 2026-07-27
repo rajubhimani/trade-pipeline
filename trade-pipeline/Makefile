@@ -1,10 +1,21 @@
-.PHONY: install lint test audit check services-up services-down up down logs ps restart demo
+.PHONY: install lint test audit check services-up services-down up down logs ps restart demo db-upgrade db-revision
 
 install:
 	uv sync
 
 lint:
 	uv run ruff check .
+
+# Apply pending Alembic migrations against POSTGRES_DSN (default: localhost,
+# see common/config.py) — same path scripts/migrate.py runs in Docker.
+db-upgrade:
+	uv run alembic upgrade head
+
+# Autogenerate a new revision from db_models.py changes. Always read the
+# generated file before committing — autogenerate misses renames and some
+# type changes.
+db-revision:
+	uv run alembic revision --autogenerate -m "$(m)"
 
 # Tests need real Postgres + Redis reachable at localhost (docker-compose.yml
 # services) — see tests/conftest.py. -n auto runs them in parallel via
