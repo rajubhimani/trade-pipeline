@@ -319,3 +319,52 @@ package's original, months-stale floor) — that's what's actually been running 
 `~=` ceiling on top of a stale floor would have meant re-resolving down to an old, unverified
 version. Confirmed no-op: `uv lock` after the change reported the same 132 resolved packages at the
 same versions, just with updated requirement strings.
+
+### `confluent-kafka`, `kafka-python`, and Redpanda
+`confluent-kafka` was already the client choice — it wraps `librdkafka` (higher throughput, more
+mature offset/consumer-group control, native `compression.type`) rather than reimplementing the wire
+protocol in pure Python like `kafka-python` does. Redpanda is a separate question — it's not a client
+library, it's a broker that speaks that same Kafka wire protocol, which is exactly why `confluent-kafka`
+needs zero code changes to talk to it either way.
+
+For this project, Kafka stays the default: the whole point of the build is demonstrating real Kafka
+internals (KRaft, consumer-group/offset semantics, `librdkafka`) for interview prep, and swapping the
+default broker would dilute that story even though nothing else about the pipeline would need to
+change. Redpanda is offered as an opt-in alternative instead (`make up-redpanda`) rather than
+skipped entirely — the ops-simplicity/no-JVM pitch is a legitimate real-world tradeoff worth having
+on hand to discuss, just not the right default for *this* project's purpose.
+
+### Redpanda as an opt-in broker swap (`docker-compose.redpanda.yml`)
+Considered using Compose's `profiles:` keyword for this, but `profiles:` can only include/exclude
+whole services — it can't swap what a service *named* `kafka` points at. `producer`/`consumer`/
+`dagster` all reference the broker purely by that service name (`KAFKA_BOOTSTRAP_SERVERS:
+kafka:29092`, `depends_on: kafka`), so a `profiles:`-based approach would mean duplicating every one
+of those dependent services just to point a `depends_on` at a different broker service name.
+
+Used a Compose override file instead: `docker-compose.redpanda.yml` redefines the `kafka` service
+under the *same* service name — same hostname, same internal port (`29092`) and host port (`9092`),
+just `redpandadata/redpanda:v26.1.14` instead of `apache/kafka:4.3.1` and an `rpk cluster health`
+healthcheck instead of `kafka-broker-api-versions.sh`. Nothing else in `docker-compose.yml` changes.
+`make up-redpanda` runs `docker compose -f docker-compose.yml -f docker-compose.redpanda.yml up -d
+--build`; default `make up` is untouched.
+
+Verified against real containers, not just `docker compose config`: brought the Redpanda stack up
+end to end (`producer` → Redpanda → `consumer` → Postgres, `make demo` against the API), confirmed
+rows landed in Postgres, then tore down and brought the default Kafka stack back up to confirm both
+paths work off the same compose file set.
+
+### `common/migrations.py` resolves `alembic.ini` by searching parents, not a fixed offset
+Caught while testing the Redpanda swap above (`migrate` exited 1 with "No 'script_location' key
+found"), unrelated to Redpanda itself: `upgrade_to_head`'s original `Path(__file__).resolve().parents[3]`
+assumed this file always lives 3 directories under the repo root (`src/trade_pipeline/common/`) — true
+for local/editable installs, but the Dockerfile's `uv sync --no-editable` installs the package under
+`.venv/lib/pythonX/site-packages/trade_pipeline/common/` instead, 4 parents from `/app` (where the
+Dockerfile separately `COPY`s `alembic.ini`/`migrations/`). The wrong fixed offset pointed at a
+directory with no `alembic.ini`, and `alembic.config.Config` doesn't error on a missing file — it
+just produces an empty config, so the failure only surfaced later at `upgrade()` with a confusing
+"No 'script_location' key found" instead of a clear "file not found".
+
+Fixed by walking `Path(__file__).resolve().parents` looking for the first directory containing
+`alembic.ini`, which finds it correctly regardless of install layout (editable vs. site-packages)
+instead of assuming either one. Confirmed by rebuilding and bringing up both the Kafka and Redpanda
+stacks from a clean volume — `migrate`/consumer startup schema init succeeds in both.

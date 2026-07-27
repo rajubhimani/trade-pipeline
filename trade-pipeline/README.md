@@ -167,6 +167,17 @@ Docker path. Once up: API on `:8000`, consumer `/metrics` on `:8001`, Dagster UI
 `make` isn't installed on Windows by default — `winget install ezwinports.make` gets a real GNU make
 (restart your shell afterward so the PATH update takes effect).
 
+### Running against Redpanda instead of Kafka
+
+```bash
+make up-redpanda   # docker compose -f docker-compose.yml -f docker-compose.redpanda.yml up -d --build
+```
+
+Swaps the broker only — same topology, same `kafka` hostname/port everything else already points at
+(`docker-compose.redpanda.yml` redefines the `kafka` service in place; see its header comment and
+[DECISIONS.md](../docs/DECISIONS.md) "Redpanda as an opt-in broker swap"). No application code
+changes: `confluent-kafka` talks to Redpanda over the same wire protocol.
+
 ## Feature flags
 
 Flags live in Postgres (`feature_flags` table), not env vars — they flip at runtime, no redeploy or

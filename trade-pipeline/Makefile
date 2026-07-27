@@ -1,4 +1,4 @@
-.PHONY: install lint test audit check services-up services-down up down logs ps restart demo db-upgrade db-revision
+.PHONY: install lint test audit check services-up services-down up up-redpanda down logs ps restart demo db-upgrade db-revision
 
 install:
 	uv sync
@@ -41,6 +41,13 @@ services-down:
 # (keys-init, migrate) in order via each service's `depends_on` condition.
 up:
 	docker compose up -d --build
+
+# Same stack, Redpanda instead of Kafka as the broker — see
+# docker-compose.redpanda.yml's header comment for why this is an override
+# file, not a `profiles:` entry. `kafka` is still the service/hostname
+# everything else depends on; only its image changes.
+up-redpanda:
+	docker compose -f docker-compose.yml -f docker-compose.redpanda.yml up -d --build
 
 down:
 	docker compose down -v
