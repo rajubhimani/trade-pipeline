@@ -72,6 +72,7 @@ Full rationale for each of these is in [`../docs/DECISIONS.md`](../docs/DECISION
 | Feature flags in Postgres, not env vars | Needs to flip at runtime without redeploying/restarting every API worker; the table is genuinely the source of truth — a direct DB write works identically to the admin API. |
 | `trades` range-partitioned by `timestamp` | Append-heavy time-series table — partitioning keeps each partition small and turns "drop old data" into an instant `DETACH PARTITION` instead of a slow `DELETE`. |
 | Real Postgres/Redis in tests, not SQLite/fakeredis | What actually made partitioning possible — SQLite can't autoincrement the composite primary key partitioning requires. `pytest-xdist` keeps it fast via per-worker schema/DB isolation. |
+| Alembic for table DDL, not `Base.metadata.create_all` | Versioned, reviewable schema changes with an `upgrade`/`downgrade` path — `create_all` only ever knows how to create the *current* model state, with no way to evolve a schema that already has data in it. Partition DDL stays outside Alembic (see `common/partitioning.py`) since "current/next month" isn't expressible as a static revision. |
 
 ## What I'd change at 10x scale
 

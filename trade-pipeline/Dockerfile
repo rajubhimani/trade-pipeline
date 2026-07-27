@@ -1,7 +1,15 @@
-# Single image, multiple entrypoints — the producer, consumer, API, and
-# Dagster all share the exact same dependency set (pyproject.toml/uv.lock),
-# so one image selecting behavior via `command:` per docker-compose service
-# is the correct pattern here, not four near-identical Dockerfiles.
+# Core image, multiple entrypoints — the producer, consumer, and API share
+# the same base dependency set (pyproject.toml/uv.lock's [project.dependencies]),
+# so one image selecting behavior via `command:` per docker-compose service is
+# the correct pattern for these three, not three near-identical Dockerfiles.
+#
+# Dagster is deliberately NOT one of this image's entrypoints — it has its
+# own Dockerfile.dagster. dagster/dagster-webserver live in a separate
+# dependency-group (pyproject.toml), not the base dependencies, specifically
+# so this image doesn't carry that SDK's weight for services that never
+# import it. --no-default-groups below also keeps the dev/test tooling
+# (pytest, mypy, ruff, ...) out of this image; uv includes the "dev" group by
+# default otherwise.
 #
 # Multi-stage build following uv's own current documented pattern
 # (docs.astral.sh/uv/guides/integration/docker/), verified before writing:
@@ -40,7 +48,7 @@ WORKDIR /app
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=uv.lock,target=uv.lock \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    uv sync --locked --no-install-project --no-editable
+    uv sync --locked --no-default-groups --no-install-project --no-editable
 
 COPY . /app
 # Overwrite whatever (nothing, if .dockerignore excludes it) was in
@@ -50,14 +58,20 @@ COPY --from=dashboard-builder /app/src/trade_pipeline/api/static /app/src/trade_
 # --locked (not --frozen): fails the build if uv.lock is stale relative to
 # pyproject.toml, rather than silently building from a mismatched lockfile —
 # the correct flag for CI/production builds per current uv guidance.
+# --no-default-groups: base [project.dependencies] only, no dagster/temporal/dev.
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-editable
+    uv sync --locked --no-default-groups --no-editable
 
 FROM python:3.14-slim-bookworm
 
 WORKDIR /app
 COPY --from=builder /app/.venv /app/.venv
 COPY --from=builder /app/src /app/src
+# alembic.ini + migrations/ — common/migrations.upgrade_to_head resolves
+# alembic.ini relative to the repo root at runtime, so both must ship
+# alongside src/, not just get baked into the venv.
+COPY --from=builder /app/alembic.ini /app/alembic.ini
+COPY --from=builder /app/migrations /app/migrations
 
 # PATH activation, not `uv run`, at runtime — uv isn't needed once the venv
 # is built, so it isn't in this final image at all (smaller, one fewer
@@ -69,4 +83,4 @@ ENV PATH="/app/.venv/bin:$PATH"
 #   python -m trade_pipeline.producer.fake_trades
 #   python -m trade_pipeline.consumer.dedup_consumer
 #   uvicorn trade_pipeline.api.main:build_production_app --factory --host 0.0.0.0
-#   dagster dev -m trade_pipeline.dagster_pipeline.definitions --host 0.0.0.0
+# (Dagster runs from Dockerfile.dagster instead — see that file.)

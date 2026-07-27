@@ -34,12 +34,24 @@ class PostgresSettings(BaseSettings):
     dsn: str = "postgresql+asyncpg://trade_pipeline:trade_pipeline@localhost:5432/trade_pipeline"
 
 
+class TemporalSettings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="TEMPORAL_", env_file=".env", extra="ignore")
+
+    address: str = "localhost:7233"
+    # One task queue for both worked examples (EnrichmentWorkflow,
+    # RefreshTokenRotationWorkflow) — a Temporal Worker binds to exactly one
+    # task queue, and there's no reason to run two worker processes for two
+    # low-volume demo workflows.
+    task_queue: str = "trade-pipeline"
+
+
 class AppConfig(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     kafka: KafkaSettings = Field(default_factory=KafkaSettings)
     redis: RedisSettings = Field(default_factory=RedisSettings)
     postgres: PostgresSettings = Field(default_factory=PostgresSettings)
+    temporal: TemporalSettings = Field(default_factory=TemporalSettings)
 
 
 def load_config() -> AppConfig:

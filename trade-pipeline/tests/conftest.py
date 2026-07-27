@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
 from trade_pipeline.common.db_models import Base
+from trade_pipeline.common.migrations import upgrade_to_head
 from trade_pipeline.common.partitioning import ensure_partitions
 
 POSTGRES_DSN = os.environ.get(
@@ -72,8 +73,17 @@ def pg_engine(worker_schema):
     engine = create_engine(
         POSTGRES_DSN, connect_args={"options": f"-csearch_path={worker_schema}"}
     )
+    # Reset to a blank schema (drop_all only knows about Base's own tables,
+    # not `alembic_version` — drop it explicitly too, otherwise Alembic
+    # thinks it's already at head and skips recreating the tables drop_all
+    # just removed).
     Base.metadata.drop_all(engine)
-    Base.metadata.create_all(engine)
+    with engine.begin() as conn:
+        conn.execute(text("DROP TABLE IF EXISTS alembic_version"))
+    # Schema itself comes entirely from Alembic now, same as production
+    # (see common/migrations.upgrade_to_head) — no separate create_all path
+    # for tests to drift out of sync with.
+    upgrade_to_head(engine)
     ensure_partitions(engine)
     yield engine
     engine.dispose()
