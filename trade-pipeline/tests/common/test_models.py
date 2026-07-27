@@ -1,17 +1,19 @@
-from copy import replace
+import sys
 from decimal import Decimal
+
+import pytest
 
 from trade_pipeline.common.models import TradeEvent, new_trade_id
 
 
 def make_event(**overrides) -> TradeEvent:
-    defaults = dict(
-        broker_id="broker-1",
-        trade_id="t-1",
-        symbol="AAPL",
-        qty=10,
-        price=Decimal("190.50"),
-    )
+    defaults = {
+        "broker_id": "broker-1",
+        "trade_id": "t-1",
+        "symbol": "AAPL",
+        "qty": 10,
+        "price": Decimal("190.50"),
+    }
     defaults.update(overrides)
     return TradeEvent(**defaults)
 
@@ -31,7 +33,10 @@ def test_event_is_frozen():
         raise AssertionError("TradeEvent should be immutable")
 
 
+@pytest.mark.skipif(sys.version_info < (3, 13), reason="copy.replace() needs 3.13+")
 def test_copy_replace_updates_single_field():
+    from copy import replace
+
     event = make_event(qty=10)
     updated = replace(event, qty=20)
     assert updated.qty == 20

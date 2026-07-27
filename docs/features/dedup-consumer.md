@@ -48,6 +48,6 @@ version-gated syntax otherwise.
 Unit tests in `tests/consumer/test_dedup_consumer.py` (4 tests) using a minimal in-memory `FakeRedis`
 and `FakeMessage` — no real Kafka/Redis needed to verify dedup logic, stat tracking, and that same
 `trade_id` across different `broker_id`s is correctly treated as distinct. `tests/consumer/test_postgres_sink.py`
-(3 tests) uses SQLite in-memory to verify the sink persists rows and enforces the unique constraint.
+(3 tests) uses the shared `pg_engine` fixture (real Postgres) to verify the sink persists rows and enforces the unique constraint.
 20/20 tests passing project-wide. `run_consumer()` itself (real Kafka wiring end to end) is not yet
 covered — needs Docker Compose up, deferred to the end-to-end smoke test task, same as the producer.

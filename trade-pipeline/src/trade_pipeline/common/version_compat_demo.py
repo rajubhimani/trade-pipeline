@@ -8,9 +8,10 @@ side and see it actually behave the same way.
 Read top to bottom; each section is one feature, oldest Python first.
 """
 
-from __future__ import annotations  # noqa: F404 — needed for the 3.11 section below
+from __future__ import annotations
 
 import asyncio
+import sys
 from dataclasses import dataclass
 from typing import Generic, TypeVar
 
@@ -47,8 +48,6 @@ class StackNew[T]:
     def pop(self) -> T:
         return self._items.pop()
 """
-
-import sys
 
 if sys.version_info >= (3, 12):
     _ns: dict[str, object] = {}

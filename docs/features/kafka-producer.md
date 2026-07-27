@@ -1,7 +1,7 @@
 # Feature: Kafka producer — fake trade events
 
-Status: in progress
-Task: docs/tasks/backlog/T-3-kafka-producer.md
+Status: shipped
+Task: docs/tasks/completed/T-3-kafka-producer.md
 
 ## Problem / motivation
 
@@ -32,13 +32,23 @@ payloads are enough for this project's purpose.
 ## Python version notes
 
 No 3.12+/3.14-only syntax used here — this module targets the full 3.11–3.14 range without a fallback
-comment needed (see `../PYTHON_VERSION_NOTES.md`). Candidate future addition: `compression.zstd`
-(3.14 stdlib) for payload compression, currently unimplemented (tracked as remaining work on T-3).
+comment needed (see `../PYTHON_VERSION_NOTES.md`).
+
+Compression is enabled via Kafka's own `compression.type: zstd` producer config
+(`_producer_config`) — **not** hand-rolled per-message payload compression with the stdlib
+`compression.zstd` module, even though that's what the source plan literally names. This was a
+deliberate deviation: Kafka compresses whole batches, which gets a far better ratio than compressing
+tiny individual JSON messages one at a time, and the consumer needs zero decompression code since
+librdkafka's `Consumer` decompresses transparently. The stdlib `compression.zstd` module is still
+demonstrated where it's actually the right tool for the job: batch cold-storage archival files (see
+`docs/features/dagster-archival.md`), which really are compressing one large payload at a time.
 
 ## Testing plan
 
-Unit tests in `tests/producer/test_fake_trades.py` (7 tests, passing): trade generation stays within
-valid ranges, trade ids are unique across calls, and JSON serialization round-trips the `Decimal`
-price correctly. No live Kafka broker required for these — `run_producer()` itself (the part that
-talks to a real broker) is not yet covered by an integration test; that requires Docker Compose up
-and is deferred until the end-to-end smoke test task.
+Unit tests in `tests/producer/test_fake_trades.py` (8 tests, passing): trade generation stays within
+valid ranges, trade ids are unique across calls, JSON serialization round-trips the `Decimal` price
+correctly, and the producer config enables zstd compression. `run_producer()` itself (the part that
+talks to a real broker) is not covered by an automated test, but **was** verified against a real
+Kafka broker manually — see `docs/tasks/completed/T-17-docker-image-upgrades.md`'s end-to-end smoke
+test, which ran this exact producer against the upgraded `apache/kafka:4.3.1` stack and confirmed
+messages landed correctly via `kafka-console-consumer`.

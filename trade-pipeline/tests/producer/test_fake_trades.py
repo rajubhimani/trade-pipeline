@@ -1,7 +1,7 @@
 import json
 from decimal import Decimal
 
-from trade_pipeline.producer.fake_trades import _serialize, generate_trade
+from trade_pipeline.producer.fake_trades import _producer_config, _serialize, generate_trade
 
 
 def test_generate_trade_has_valid_symbol():
@@ -25,3 +25,9 @@ def test_serialize_round_trips_price_as_string():
     assert payload["broker_id"] == "broker-2"
     assert Decimal(payload["price"]) == event.price
     assert payload["trade_id"] == event.trade_id
+
+
+def test_producer_config_enables_zstd_compression():
+    config = _producer_config("localhost:9092")
+    assert config["compression.type"] == "zstd"
+    assert config["bootstrap.servers"] == "localhost:9092"

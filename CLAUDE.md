@@ -4,16 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository overview
 
-This repository contains a single self-contained static HTML file: `faang_python_full_prep.html`. It is a personal 8-week FAANG Python (senior) interview prep plan/tracker — not an application with source code, dependencies, or a build system.
+This repository contains a single self-contained Markdown file: `faang_python_full_prep.md`. It is a personal 8-week FAANG Python (senior) interview prep plan/tracker — not an application with source code, dependencies, or a build system.
 
-There is no build, lint, or test tooling. There is no package manager, no server, no framework. To view the page, simply open `faang_python_full_prep.html` directly in a browser.
+There is no build, lint, or test tooling. There is no package manager, no server, no framework. To view the page, open `faang_python_full_prep.md` in any Markdown viewer/editor (or GitHub's own renderer).
 
-## Structure of the HTML file
+## Structure of the Markdown file
 
-The file is organized as three inline blocks within one `<html>` document:
+Plain Markdown, top to bottom: a title + jump-links line, a diagnostic-scores table, the 2-hour daily schedule table, the Python 3.11→3.14 version-evolution section (per-version feature lists, a feature-availability matrix table, model interview answers), one `##` section per week (1–2 DSA, 3 internals, 4 async, 5 security, 6–7 system design, 8 mocks) each with prose/tables/fenced code blocks, a parallel-tracks section (DSA + project side by side per week), the project component table, and a closing "three things to fix first" section.
 
-- `<style>` (top of file): all CSS, using plain class names (no framework/preprocessor). Sections include TOC pills, score cards, callouts, badges, resource pills, week accordions, day grids, and problem list styling.
-- Body markup: a table of contents, score/verdict cards, and a series of collapsible "week" blocks (accordion), each containing day cards and problem lists tagged with difficulty/topic badges (DSA, system design, Python, security, project, version, mock interview).
-- `<script>` (bottom of file): minimal vanilla JS with two behaviors — `tog(header)` toggles a week accordion open/closed, and a `DOMContentLoaded` listener wires up smooth-scrolling for TOC links to their corresponding section anchors.
-
-When editing, keep everything inline in this single file (no external CSS/JS files, no build step) — that is the intentional design of this document.
+When editing, keep everything inline in this single file (no separate assets, no build step) — that is the intentional design of this document.

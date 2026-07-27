@@ -53,7 +53,7 @@ serving. Applied here to:
 ```
 trade-pipeline/
   pyproject.toml          # uv-managed, requires-python >=3.11,<3.15
-  docker-compose.yml       # Kafka, Zookeeper, Redis, Postgres
+  docker-compose.yml       # Kafka (KRaft), Redis, Postgres
   src/trade_pipeline/
     producer/              # Component 1 — Kafka producer, fake trades + dupes
     consumer/               # Component 2 — dedup consumer, manual offset commit

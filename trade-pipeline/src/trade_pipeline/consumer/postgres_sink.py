@@ -17,30 +17,14 @@ silent duplicate (call sites must decide how to handle it; see
 """
 
 from collections.abc import Callable
-from decimal import Decimal
 
-from sqlalchemy import DateTime, Numeric, String, UniqueConstraint, create_engine
+from sqlalchemy import create_engine
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
+from sqlalchemy.orm import sessionmaker
 
+from trade_pipeline.common.db_models import Base, Trade
 from trade_pipeline.common.models import TradeEvent
-
-
-class Base(DeclarativeBase):
-    pass
-
-
-class Trade(Base):
-    __tablename__ = "trades"
-    __table_args__ = (UniqueConstraint("broker_id", "trade_id", name="uq_broker_trade"),)
-
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    broker_id: Mapped[str] = mapped_column(String(64), index=True)
-    trade_id: Mapped[str] = mapped_column(String(64))
-    symbol: Mapped[str] = mapped_column(String(16), index=True)
-    qty: Mapped[int]
-    price: Mapped[Decimal] = mapped_column(Numeric(18, 4))
-    timestamp: Mapped[object] = mapped_column(DateTime(timezone=True))
+from trade_pipeline.common.partitioning import ensure_partitions
 
 
 class DuplicateTradeError(Exception):
@@ -64,6 +48,11 @@ def make_engine(dsn: str):
 
 def init_schema(engine) -> None:
     Base.metadata.create_all(engine)
+    # trades is PARTITION BY RANGE (see Trade.__table_args__) — the ORM's
+    # create_all emits the parent table DDL but can't create child
+    # partitions on its own; without at least the DEFAULT partition, every
+    # insert would be rejected outright.
+    ensure_partitions(engine)
 
 
 def make_sink(engine) -> Callable[[TradeEvent], None]:

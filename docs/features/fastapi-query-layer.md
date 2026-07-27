@@ -1,7 +1,7 @@
 # Feature: FastAPI query layer + JWT RS256 auth
 
-Status: draft
-Task: docs/tasks/backlog/T-5-fastapi-query-layer.md
+Status: shipped
+Task: docs/tasks/completed/T-5-fastapi-query-layer.md
 
 ## Problem / motivation
 
@@ -18,8 +18,8 @@ In:
 - `POST /auth/login` — issues a short-lived JWT access token (RS256) + refresh token.
 - `POST /auth/refresh` — rotates the refresh token (single-use), issues a new access token.
 - `POST /auth/logout` — revokes the current access token (JWT blocklist) and deletes the refresh token.
-- Security middleware stack: CORS (explicit origins only), security headers, slowapi rate limiting,
-  structlog audit logging on `/auth/*`, global exception handler that never leaks internals.
+- Security middleware stack: CORS (explicit origins only), security headers, Redis-backed rate
+  limiting, structlog audit logging on `/auth/*`, global exception handler that never leaks internals.
 - `/metrics` endpoint via prometheus-fastapi-instrumentator.
 
 Out:
@@ -28,6 +28,9 @@ Out:
   plan's Week 5 track.
 - The enrichment service calls (component 4, T-6) — `GET /trades` returns raw stored trade rows only,
   no enrichment fan-out yet.
+- Real user registration/management — one hardcoded demo account
+  (`src/trade_pipeline/api/auth/users.py`) is enough to exercise the full auth flow; building a real
+  user system is out of scope for this project's focus (pipeline + security hardening).
 
 ## Design
 
@@ -41,15 +44,28 @@ Out:
 - Revocation: access-token `jti` claim added to a Redis blocklist on logout, checked on every request
   via the auth dependency — JWTs are otherwise stateless and can't be individually invalidated.
   See `../DECISIONS.md` for the RS256-over-HS256 rationale.
-- Security headers via `BaseHTTPMiddleware` (X-Content-Type-Options, X-Frame-Options,
-  Strict-Transport-Security, Content-Security-Policy, Referrer-Policy) — chosen over per-route header
-  injection so nothing can forget it; tradeoff (context-var/perf caveats of `BaseHTTPMiddleware`)
-  documented in code comments once confirmed against current docs.
+- Security headers AND audit logging use **pure ASGI middleware** (`api/middleware.py`), not
+  `starlette.middleware.base.BaseHTTPMiddleware` — confirmed via research that `BaseHTTPMiddleware`
+  wraps every request in an extra response-streaming layer costing ~1.8x throughput versus pure ASGI,
+  plus known `contextvars`/background-task propagation issues, because it runs the inner app in a
+  separate anyio task. Both of these middlewares run on every request, so the pure-ASGI form was
+  worth the extra verbosity. See `../DECISIONS.md`.
 - Global exception handler returns `{"detail": "..."}` only, logs full detail internally via
   `structlog` — matches the plan's "never leak internals" requirement. 422 validation errors are
   overridden the same way (default FastAPI verbose validation responses reveal field names/types).
-- Rate limiting via `slowapi`: stricter limit on `/auth/*` (e.g. 10/minute) than `/trades` (100/minute)
-  to slow brute force specifically.
+- Rate limiting: **not** `slowapi` — its own internals call the now-deprecated
+  `asyncio.iscoroutinefunction` (slated for removal in 3.16), which surfaced immediately as a
+  `DeprecationWarning` under Python 3.14 once `filterwarnings = ["error::DeprecationWarning"]` was
+  added to the test config. Replaced with a small Redis-backed pure-ASGI `RateLimitMiddleware`
+  (`api/rate_limit.py`) using the same `INCR` + `EXPIRE` fixed-window pattern the plan's own Week 6-7
+  system-design track recommends for a rate limiter — atomic without needing a Lua script, since
+  `INCR` on a new key is itself atomic (exactly one caller ever observes the 0→1 transition). This is
+  also Redis-backed rather than slowapi's default in-process storage, so it's correct across multiple
+  API worker processes, not just one. Stricter limit on `/auth/*` (10/minute) than `/trades`
+  (100/minute) to specifically slow brute force.
+- Password hashing: Argon2id (`argon2-cffi`), not bcrypt — current OWASP-recommended default for new
+  applications (bcrypt is still fine but no longer the default recommendation; passlib is confirmed
+  unmaintained since 2020). See `api/auth/users.py`.
 
 ## Python version notes
 
@@ -59,9 +75,19 @@ No 3.12+/3.14-only syntax required for this feature — targets the full 3.11–
 ## Testing plan
 
 - Unit tests for the JWT encode/decode helpers (valid token round-trip, expired token rejected, wrong
-  algorithm rejected, missing `exp` rejected) — no FastAPI app needed for these.
-- `httpx.AsyncClient` + FastAPI's test client (ASGI transport, no real server) for endpoint tests:
-  login → get token → call `/trades` with it → 200; call `/trades` without a token → 401; refresh flow
-  end to end (per the plan's Week 3 Saturday integration test description).
-- Redis and Postgres dependencies faked/stubbed for unit tests; a real Docker Compose smoke test is
-  deferred to the project-wide end-to-end task (same deferral as producer/consumer).
+  algorithm rejected, missing `exp` rejected, `alg:none` attack rejected, RS256→HS256 confusion attack
+  rejected — the latter two hand-forged since PyJWT's own `encode()` now refuses to build them) —
+  6 tests, no FastAPI app needed.
+- `httpx.AsyncClient` + `ASGITransport` (current FastAPI-recommended pattern, confirmed via research —
+  supersedes `starlette.testclient.TestClient` for genuine async tests) against an app built via
+  `create_app()` via the shared `pg_async_engine` fixture (real Postgres, isolated per xdist worker/test — see
+  tests/conftest.py) and the real `redis_client` fixture. 10 endpoint tests: login
+  success/wrong-password/unknown-user, refresh without cookie / rotates-and-invalidates-old, logout
+  revokes access token, trades without-token/with-token/filter-by-symbol/respects-limit.
+- `filterwarnings = ["error::DeprecationWarning", "error::PendingDeprecationWarning"]` added to
+  `pytest.ini_options` project-wide during this feature's build — caught the slowapi deprecation
+  warning immediately rather than letting it linger silently (see Design section, and
+  `docs/CODING_STANDARDS.md`).
+- 36/36 tests passing project-wide, ruff clean. A real Docker Compose smoke test against actual
+  Postgres/Redis is still deferred to the project-wide end-to-end task (same deferral as
+  producer/consumer).

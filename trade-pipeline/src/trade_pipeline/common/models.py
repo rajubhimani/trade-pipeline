@@ -6,7 +6,7 @@ for the 3.11 fallback shape of each version-gated construct used here.
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import uuid4
 
@@ -29,7 +29,7 @@ class TradeEvent:
     symbol: str
     qty: int
     price: Decimal
-    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def dedup_key(self) -> str:
         return f"trade:{self.broker_id}:{self.trade_id}"

@@ -1,0 +1,68 @@
+name: CI
+
+"on":
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+defaults:
+  run:
+    working-directory: trade-pipeline
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The project's full requires-python range (pyproject.toml) — proves
+        # version-compat claims are actually true, not just true on whatever
+        # interpreter a developer happens to have active locally.
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
+    # Real Postgres + Redis, matching docker-compose.yml's versions — the
+    # test suite talks to real services (tests/conftest.py), not
+    # SQLite/fakeredis substitutes. GitHub Actions service containers expose
+    # ports to the runner's localhost automatically.
+    services:
+      postgres:
+        image: postgres:18.4-alpine
+        env:
+          POSTGRES_USER: trade_pipeline
+          POSTGRES_PASSWORD: trade_pipeline
+          POSTGRES_DB: trade_pipeline
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:8.8-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v9.0.0
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: uv sync --python ${{ matrix.python-version }}
+
+      - name: Lint (ruff)
+        run: uv run ruff check .
+
+      - name: Test (pytest)
+        run: uv run pytest tests/ -n auto -v
+
+      - name: Dependency audit (pip-audit)
+        run: uv run pip-audit

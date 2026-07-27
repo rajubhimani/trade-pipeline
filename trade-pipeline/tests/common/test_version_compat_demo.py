@@ -60,6 +60,14 @@ async def test_taskgroup_all_succeed_matches_gather_all_succeed():
     assert set(tg_results.values()) == set(gather_results)
 
 
+def test_move_old_way_produces_expected_result():
+    p = Point(x=1, y=2)
+    old = move_old_way(p, dx=5)
+    assert old == Point(x=6, y=2)
+    assert p == Point(x=1, y=2)  # original untouched (frozen)
+
+
+@pytest.mark.skipif(sys.version_info < (3, 13), reason="copy.replace() needs 3.13+")
 def test_move_old_and_new_produce_same_result():
     p = Point(x=1, y=2)
     old = move_old_way(p, dx=5)
