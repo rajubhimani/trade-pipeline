@@ -270,3 +270,29 @@ the point of having one versioned source of truth. It still does `Base.metadata.
 explicit `DROP TABLE IF EXISTS alembic_version` per test (Alembic has no "wipe and reset" command of
 its own) so each test starts from a genuinely blank schema and replays the real migration path, not
 a fixture-only shortcut.
+
+### Compatible-release (`~=`) version pins, not bare `>=`
+Every dependency in `pyproject.toml` used a bare floor (`fastapi>=0.115`) with no upper bound. `uv
+lock` resolves each of those to the *highest* version on PyPI satisfying it — with no ceiling, that
+silently includes the next major release the moment it ships, which is exactly the "ran `uv lock
+--upgrade`, something got removed/renamed/deprecated, code breaks with no warning" scenario this
+pin scheme exists to prevent. (This had already happened once in practice: `redis>=5.2` had resolved
+all the way to 8.0.1 by the time this was written — three major versions past what was originally
+tested against.)
+
+Switched every entry to PEP 440's "compatible release" operator (`~=`), which keeps the same floor
+behavior but adds an implicit ceiling at the next major version — `sqlalchemy[asyncio]~=2.0` means
+`>=2.0, ==2.*`, so `uv lock --upgrade` can move within 2.x freely but will never resolve 3.0 without
+someone deliberately widening the pin.
+
+Pre-1.0 packages (`fastapi`, `uvicorn`, `asyncpg`, `prometheus-client`, `zstandard`) are pinned one
+level deeper — `fastapi~=0.140.0`, not `fastapi~=0.140` — because 0.x releases don't carry semver's
+major/minor split; by convention (and in practice, per each project's own changelog) a 0.x *minor*
+bump is where breaking changes land, so the pin has to lock the minor component, not just leave "0"
+fixed, to actually block them.
+
+Every floor was also raised to match what `uv.lock` had already resolved to (not left at each
+package's original, months-stale floor) — that's what's actually been running and tested; pinning a
+`~=` ceiling on top of a stale floor would have meant re-resolving down to an old, unverified
+version. Confirmed no-op: `uv lock` after the change reported the same 132 resolved packages at the
+same versions, just with updated requirement strings.

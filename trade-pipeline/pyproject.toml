@@ -7,25 +7,34 @@ authors = [
     { name = "Raju Bhimani", email = "raju.bhimani@hotmail.com" }
 ]
 requires-python = ">=3.11,<3.15"
+
+# `~=` (PEP 440 "compatible release"), not `>=`: allows patch/minor upgrades
+# but blocks the next major version from ever being auto-resolved, so a
+# `uv lock --upgrade` can't silently jump onto a release that dropped or
+# renamed something this code depends on. Pre-1.0 packages are pinned at
+# the minor level instead (`~=0.140.0`, not `~=0.140`) since 0.x releases
+# treat a minor bump as their de facto major/breaking boundary. Floors
+# match what uv.lock already resolved to, not the original historical
+# floor — see docs/DECISIONS.md "Compatible-release version pins".
 dependencies = [
-    "pydantic>=2.9",
-    "pydantic-settings>=2.6",
-    "confluent-kafka>=2.6",
-    "redis>=5.2",
-    "sqlalchemy[asyncio]>=2.0",
-    "asyncpg>=0.30",
-    "psycopg[binary]>=3.2",
-    "alembic>=1.13",
-    "argon2-cffi>=23.1",
-    "fastapi>=0.115",
-    "uvicorn[standard]>=0.32",
-    "pyjwt>=2.9",
-    "cryptography>=43",
-    "structlog>=24.4",
-    "prometheus-fastapi-instrumentator>=7.0",
-    "prometheus-client>=0.21",
-    "tenacity>=9.0",
-    "aiohttp>=3.10",
+    "pydantic~=2.0",
+    "pydantic-settings~=2.0",
+    "confluent-kafka~=2.0",
+    "redis~=8.0",
+    "sqlalchemy[asyncio]~=2.0",
+    "asyncpg~=0.31.0",
+    "psycopg[binary]~=3.0",
+    "alembic~=1.0",
+    "argon2-cffi~=25.0",
+    "fastapi~=0.140.0",
+    "uvicorn[standard]~=0.51.0",
+    "pyjwt~=2.0",
+    "cryptography~=49.0",
+    "structlog~=26.0",
+    "prometheus-fastapi-instrumentator~=8.0",
+    "prometheus-client~=0.26.0",
+    "tenacity~=9.0",
+    "aiohttp~=3.0",
 ]
 
 # dagster/temporal split into their own groups (not base dependencies) so the
@@ -35,27 +44,27 @@ dependencies = [
 # gets base deps only; `--group dagster` / `--group temporal` opt in.
 [dependency-groups]
 dev = [
-    "pytest>=8.3",
-    "pytest-asyncio>=0.24",
-    "pytest-cov>=6.0",
-    "ruff>=0.8",
-    "mypy>=1.13",
-    "pip-audit>=2.7",
-    "httpx>=0.28",
-    "pytest-xdist>=3.6",
+    "pytest~=9.0",
+    "pytest-asyncio~=1.0",
+    "pytest-cov~=7.0",
+    "ruff~=0.16.0",
+    "mypy~=2.0",
+    "pip-audit~=2.0",
+    "httpx~=0.28.0",
+    "pytest-xdist~=3.0",
     {include-group = "dagster"},
     {include-group = "temporal"},
 ]
 dagster = [
-    "dagster>=1.9",
-    "dagster-webserver>=1.9",
+    "dagster~=1.0",
+    "dagster-webserver~=1.0",
     # 3.11-3.13 fallback for dagster_pipeline/archival.py's compression.zstd
     # (3.14 stdlib) usage — see that module for the compatibility shim. Marker
     # keeps this out of 3.14 environments entirely, where it's not needed.
-    "zstandard>=0.23; python_version < '3.14'",
+    "zstandard~=0.25.0; python_version < '3.14'",
 ]
 temporal = [
-    "temporalio>=1.9",
+    "temporalio~=1.0",
 ]
 
 [build-system]
