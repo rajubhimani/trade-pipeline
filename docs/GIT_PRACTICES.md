@@ -62,5 +62,5 @@ version range this project targets.
 
 ## Remote
 
-Private GitHub repo: `rajubhimani/faang-python-prep`. HTTPS remote (not SSH — no SSH key configured in
+Private GitHub repo: `rajubhimani/trade-pipeline`. HTTPS remote (not SSH — no SSH key configured in
 this environment), authenticated via `gh auth login`.

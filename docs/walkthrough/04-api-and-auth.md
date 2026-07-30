@@ -19,13 +19,14 @@ never leaks internals to a client.
 
 **File**: [`src/trade_pipeline/api/main.py`](../../trade-pipeline/src/trade_pipeline/api/main.py)
 
-[`create_app(engine, redis_client, api_settings)`](../../trade-pipeline/src/trade_pipeline/api/main.py#L53)
-is a **factory**, not a module-level `app` — so tests can inject a SQLite in-memory engine and a
-`fakeredis` client instead of real Postgres/Redis
-([`tests/api/conftest.py`](../../trade-pipeline/tests/api/conftest.py)). It wires, in order:
-`CORSMiddleware` → `AuditLogMiddleware` → `SecurityHeadersMiddleware` → `RateLimitMiddleware` →
-exception handlers → routers → Prometheus instrumentation.
-[`build_production_app()`](../../trade-pipeline/src/trade_pipeline/api/main.py#L109) is the real
+[`create_app(engine, redis_client, api_settings)`](../../trade-pipeline/src/trade_pipeline/api/main.py#L54)
+is a **factory**, not a module-level `app` — so tests can inject an isolated, worker-scoped Postgres
+schema and Redis DB index instead of a shared one
+([`tests/api/conftest.py`](../../trade-pipeline/tests/api/conftest.py); see
+[DECISIONS.md](../DECISIONS.md) "Real Postgres/Redis in tests, not SQLite/fakeredis"). It wires, in
+order: `CORSMiddleware` → `AuditLogMiddleware` → `SecurityHeadersMiddleware` → `RateLimitMiddleware`
+→ exception handlers → routers → Prometheus instrumentation.
+[`build_production_app()`](../../trade-pipeline/src/trade_pipeline/api/main.py#L111) is the real
 zero-arg entrypoint `uvicorn --factory` actually points at — it assembles real Postgres/Redis
 connections from config and delegates to `create_app`, kept separate so the test-friendly factory
 shape of `create_app` itself never has to compromise for production wiring concerns.

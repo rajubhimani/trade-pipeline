@@ -46,17 +46,17 @@ sequenceDiagram
 
 ## Code references — dedup logic
 
-- [`DedupConsumer.is_duplicate(event)`](../../trade-pipeline/src/trade_pipeline/consumer/dedup_consumer.py#L61) —
+- [`DedupConsumer.is_duplicate(event)`](../../trade-pipeline/src/trade_pipeline/consumer/dedup_consumer.py#L62) —
   the atomic check: `redis.set(key, 1, nx=True, ex=ttl)`. This is the plan's `SETNX ... EX 300`
   spelled with redis-py's current API (see [DECISIONS.md](../DECISIONS.md) "Redis SETNX for dedup").
-- [`DedupConsumer.process_message(message)`](../../trade-pipeline/src/trade_pipeline/consumer/dedup_consumer.py#L68) —
+- [`DedupConsumer.process_message(message)`](../../trade-pipeline/src/trade_pipeline/consumer/dedup_consumer.py#L69) —
   the sequencing: dedup check → sink write → return whether to commit. Duplicates are committed past
   immediately (nothing to redo); a real write only commits *after* it succeeds.
-- [`run_consumer(...)`](../../trade-pipeline/src/trade_pipeline/consumer/dedup_consumer.py#L84) — the
+- [`run_consumer(...)`](../../trade-pipeline/src/trade_pipeline/consumer/dedup_consumer.py#L85) — the
   real Kafka wiring: `enable.auto.commit: False`, and `consumer.commit(message=message)` is only
   called when `process_message` returns without raising. This is the load-bearing behavior for
   at-least-once delivery.
-- [`DedupStats`](../../trade-pipeline/src/trade_pipeline/consumer/dedup_consumer.py#L42) — tracks
+- [`DedupStats`](../../trade-pipeline/src/trade_pipeline/consumer/dedup_consumer.py#L43) — tracks
   `processed`/`duplicates` counts, exposes `dedup_hit_rate`.
 
 ## Code references — Postgres sink
@@ -65,12 +65,12 @@ sequenceDiagram
   `common/` (not under `consumer/`) specifically because it's shared: the sync consumer sink and the
   async API both use the same table definition. SQLAlchemy table definitions are engine-agnostic;
   only the Session/Engine machinery differs.
-- [`make_sink(engine)`](../../trade-pipeline/src/trade_pipeline/consumer/postgres_sink.py#L52) — returns
+- [`make_sink(engine)`](../../trade-pipeline/src/trade_pipeline/consumer/postgres_sink.py#L64) — returns
   the callable wired as `DedupConsumer`'s sink. Uses **sync** SQLAlchemy with the `psycopg` (v3)
   driver, not async `asyncpg` — the consumer's poll loop is a plain blocking loop, not an event loop,
   so an async driver would need its own bridged event loop for no benefit. See
   [DECISIONS.md](../DECISIONS.md) "Sync psycopg for the consumer... async asyncpg for the API."
-- [`DuplicateTradeError`](../../trade-pipeline/src/trade_pipeline/consumer/postgres_sink.py#L29) — a DB
+- [`DuplicateTradeError`](../../trade-pipeline/src/trade_pipeline/consumer/postgres_sink.py#L33) — a DB
   unique constraint on `(broker_id, trade_id, timestamp)` is a defense-in-depth backstop behind Redis
   dedup; raised (not silently swallowed) if the two dedup layers ever disagree, since that's worth
   alerting on.
@@ -101,7 +101,7 @@ becomes an instant `DETACH PARTITION` instead of a slow row-by-row `DELETE`).
 - [`ensure_partitions(engine)`](../../trade-pipeline/src/trade_pipeline/common/partitioning.py) — the
   ORM's `create_all` emits the partitioned *parent* table but can't create child partitions on its own;
   this creates a `DEFAULT` catch-all plus explicit monthly partitions for the current and next month.
-  Wired into [`postgres_sink.init_schema()`](../../trade-pipeline/src/trade_pipeline/consumer/postgres_sink.py#L48) —
+  Wired into [`postgres_sink.init_schema()`](../../trade-pipeline/src/trade_pipeline/consumer/postgres_sink.py#L52) —
   runs automatically, idempotently, on every startup.
 - [`list_partitions(engine)`](../../trade-pipeline/src/trade_pipeline/common/partitioning.py) —
   introspects Postgres's own catalog (`pg_inherits`/`pg_class`) to prove the table really is

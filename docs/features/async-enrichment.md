@@ -8,8 +8,7 @@ Task: docs/tasks/completed/T-6-async-enrichment.md
 Component 4 of the project (`../ARCHITECTURE.md`) — the query API calls out to 3 mock enrichment
 services in parallel to attach extra data to a trade before returning it. This is also where the
 plan's Week 4 async-mastery track becomes real code: `gather()` vs `wait()` vs `TaskGroup`, timeout vs
-backoff, and a hand-rolled circuit breaker are all named explicitly as "what Q3 wanted" in the source
-plan (`../../faang_python_full_prep.html`).
+backoff, and a hand-rolled circuit breaker are all named explicitly as "what Q3 wanted."
 
 Per the user's explicit ask to use Temporal "wherever applicable," this is also where a second,
 parallel implementation lives: the same enrichment fan-out rebuilt as a Temporal Workflow + Activities,

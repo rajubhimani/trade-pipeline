@@ -1,10 +1,9 @@
 # trade-pipeline
 
-A real-time trade event pipeline with a secure query API — built as the hands-on project half of an
-8-week FAANG Python (senior) interview prep plan ([`../faang_python_full_prep.html`](../faang_python_full_prep.html)).
-Every component maps to a gap identified in that plan's diagnostic: DSA aside, the weak areas were
-Python internals, async/concurrency, web security, and system design — this project is those four
-things, built and tested, not just described.
+A real-time trade event pipeline with a secure query API — built as a hands-on project covering the
+gaps identified in a senior Python interview prep diagnostic: DSA aside, the weak areas were Python
+internals, async/concurrency, web security, and system design — this project is those four things,
+built and tested, not just described.
 
 Full docs (architecture, decisions, task history, a guided code walkthrough with clickable
 line-references) live in [`../docs/`](../docs/README.md). This README is the shorter, standalone

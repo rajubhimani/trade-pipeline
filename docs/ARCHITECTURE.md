@@ -1,8 +1,6 @@
 # Architecture — Real-Time Trade Event Pipeline
 
-Source plan: `../faang_python_full_prep.html` (8-week FAANG prep — DSA, internals, async, security,
-system design, mocks). This doc tracks the actual system being built as the "project" track of that
-plan, kept in `trade-pipeline/`.
+This doc tracks the actual system being built, kept in `trade-pipeline/`.
 
 ## 5-layer framework (applied to this system)
 

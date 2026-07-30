@@ -5,7 +5,7 @@ Task: docs/tasks/completed/T-14-free-threaded-benchmark.md
 
 ## Problem / motivation
 
-Week 3 of the plan (`../../faang_python_full_prep.html`) calls for hands-on CPython-internals study —
+Week 3 of the plan calls for hands-on CPython-internals study —
 specifically, seeing the GIL's effect on CPU-bound threading directly rather than just reading about
 PEP 703. Not part of the production trade-pipeline system (the pipeline's own concurrency is I/O-bound
 async, not CPU-bound threading — see `../ARCHITECTURE.md`), so this lives in a standalone

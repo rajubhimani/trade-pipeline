@@ -71,9 +71,9 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    W["EnrichmentWorkflow.run(service_names)"]
-    SA1["start_activity: call_enrichment_service('a')"]
-    SA2["start_activity: call_enrichment_service('b')"]
+    W["EnrichmentWorkflow.run(EnrichmentWorkflowInput)"]
+    SA1["start_activity: call_enrichment_service('a', payload?)"]
+    SA2["start_activity: call_enrichment_service('b', payload?)"]
     RP["RetryPolicy:<br/>non_retryable_error_types=[BadRequest]"]
     Act["@activity.defn<br/>call_enrichment_service"]
     AE{ActivityError?}
@@ -85,10 +85,14 @@ flowchart TD
     AE -->|no| Ok[EnrichmentActivityResult&#40;data=...&#41;]
 ```
 
-- [`call_enrichment_service`](../../trade-pipeline/src/trade_pipeline/enrichment/temporal_workflow.py#L47) —
+`payload` is only present for the real per-trade dispatch path (see below) — the bare
+`service_names`-only shape from the original comparison still works with no payload, calling the
+same activity against the test-script registry instead.
+
+- [`call_enrichment_service`](../../trade-pipeline/src/trade_pipeline/enrichment/temporal_workflow.py#L69) —
   the `@activity.defn`. Still a plain `async def` underneath — the decorator only changes how it's
   *registered* with a worker, so it's directly callable/awaitable in tests with zero Temporal runtime.
-- [`EnrichmentWorkflow.run`](../../trade-pipeline/src/trade_pipeline/enrichment/temporal_workflow.py#L62) —
+- [`EnrichmentWorkflow.run`](../../trade-pipeline/src/trade_pipeline/enrichment/temporal_workflow.py#L94) —
   starts every activity concurrently via `workflow.start_activity`, then awaits each handle in a loop,
   catching `ActivityError` per activity so one failure doesn't fail the whole workflow — the same
   graceful-degradation contract as the hand-rolled version, different mechanism.
