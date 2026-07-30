@@ -52,6 +52,15 @@ Out:
   own defined precedence (init args > env vars > `.env` file > defaults) already does the right thing:
   a real deployment's env vars always win over a stray `.env` file that happens to be present.
 
+> **Update**: `PostgresSettings`/`RedisSettings` were later split into individual fields
+> (`POSTGRES_HOST`/`PORT`/`USER`/`PASSWORD`/`DB`, `REDIS_HOST`/`PORT`/`DB`/`PASSWORD`) instead of one
+> prebuilt DSN/URL each, computed via `.dsn`/`.sync_dsn`/`.url` properties — so pointing at a real
+> managed Postgres/Redis later is overriding a couple of env vars, not reconstructing a whole
+> connection string. `.env.example` is now one template reused for every `*.env` target (`.env` for
+> host-side dev with `localhost` defaults, `docker-compose.env` for the full containerized stack with
+> Compose service DNS names swapped in) rather than assuming `AppConfig()`'s bare defaults work
+> against every `docker compose up` variant.
+
 ## Python version notes
 
 No version-gated syntax; targets the full 3.11–3.14 range.

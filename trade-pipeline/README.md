@@ -37,14 +37,21 @@ flowchart LR
     subgraph Serve
         API[FastAPI<br/>JWT RS256]
     end
+    subgraph Enrichment
+        OB[Outbox dispatcher]
+        TW[Temporal workflow]
+    end
     subgraph Batch
         DAG[Dagster asset]
     end
 
     P -->|~5% intentional dupes| K --> C
     C <-->|SETNX EX 300| R
-    C -->|manual commit after write| PG
-    API -->|async SELECT| PG
+    C -->|insert trade + pending job| PG
+    OB -->|poll pending jobs| PG
+    OB --> TW
+    TW -->|persist result| PG
+    API -->|async SELECT, reads stored enrichment only| PG
     DAG -->|batch, every minute| PG
     DAG -->|zstd compress| ARC
 ```

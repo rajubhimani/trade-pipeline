@@ -5,7 +5,7 @@ version facts. Source of truth for "why this syntax" comments in code.
 
 | Feature | 3.11 | 3.12 | 3.13 | 3.14 | Use in this project |
 |---|---|---|---|---|---|
-| `asyncio.TaskGroup` / `except*` | added | yes | yes | yes | consumer + enrichment use TaskGroup as the default; `gather()` kept alongside as the pre-3.11 comparison |
+| `asyncio.TaskGroup` / `except*` | added | yes | yes | yes | `common/version_compat_demo.py` compares `TaskGroup` against `gather()` side by side; the consumer and enrichment fan-outs both use `gather(return_exceptions=True)` instead of `TaskGroup`, since its all-or-nothing sibling-cancellation is the wrong tool for "return partial results per service" (see `docs/features/async-enrichment.md`) |
 | `class Stack[T]` type params | no (`TypeVar`) | added | yes | yes | `common/` generic containers use `[T]`; a `TypeVar` version is kept as a comment for 3.11 comparison |
 | `@typing.override` | no | added | yes | yes | used on any subclass overriding a base method (e.g. enrichment client adapters) |
 | Deferred annotations default (PEP 649) | needs `from __future__ import annotations` | needs it | needs it | default | modules targeting 3.14 omit the future-import; a note is left where 3.11 compat needs it added back |

@@ -33,7 +33,7 @@ sequenceDiagram
         DC-->>K: commit offset (safe to skip)
     else key newly created
         R-->>DC: set
-        DC->>PG: INSERT trade (sink write)
+        DC->>PG: INSERT trade + pending outbox job (one transaction, if enrichment_enabled)
         alt write succeeds
             PG-->>DC: ok
             DC-->>K: commit offset

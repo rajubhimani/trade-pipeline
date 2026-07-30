@@ -282,8 +282,9 @@ idempotent runtime call (`ensure_partitions`, run right after `alembic upgrade h
 `common/migrations.upgrade_to_head`).
 
 `migrations/env.py` resolves its connection from `common/config.load_config()` (the same
-`POSTGRES_DSN` every other entrypoint reads) rather than a separate URL hardcoded in `alembic.ini`,
-and reuses an already-open engine when one is passed in via `config.attributes["connection"]` — so
+`PostgresSettings` — `POSTGRES_HOST`/`PORT`/`USER`/`PASSWORD`/`DB` — every other entrypoint reads)
+rather than a separate URL hardcoded in `alembic.ini`, and reuses an already-open engine when one is
+passed in via `config.attributes["connection"]` — so
 `postgres_sink.init_schema` and `scripts/migrate.py` don't open a second Postgres connection just to
 migrate.
 
