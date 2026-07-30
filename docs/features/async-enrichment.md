@@ -8,8 +8,7 @@ Task: docs/tasks/completed/T-6-async-enrichment.md
 Component 4 of the project (`../ARCHITECTURE.md`) — the query API calls out to 3 mock enrichment
 services in parallel to attach extra data to a trade before returning it. This is also where the
 plan's Week 4 async-mastery track becomes real code: `gather()` vs `wait()` vs `TaskGroup`, timeout vs
-backoff, and a hand-rolled circuit breaker are all named explicitly as "what Q3 wanted" in the source
-plan (`../../faang_python_full_prep.html`).
+backoff, and a hand-rolled circuit breaker are all named explicitly as "what Q3 wanted."
 
 Per the user's explicit ask to use Temporal "wherever applicable," this is also where a second,
 parallel implementation lives: the same enrichment fan-out rebuilt as a Temporal Workflow + Activities,
@@ -28,17 +27,77 @@ In:
 - `enrichment/hand_rolled.py` — `asyncio.gather(return_exceptions=True)` + per-call
   `asyncio.wait_for(timeout=2)` + `tenacity` retry (on timeout only, never on 4xx-equivalent errors)
   + circuit breaker per service, returning a merged dict with graceful partial results on failure.
-- `enrichment/temporal_workflow.py` — the same fan-out as a Temporal `@workflow.defn` calling 3
+- `enrichment/temporal_workflow.py` — the same fan-out as a Temporal `@workflow.defn` calling
   `@activity.defn` activities concurrently, with a `RetryPolicy` per activity matching the hand-rolled
   version's retry semantics (retry on timeout-shaped errors, not on non-retryable ones), and partial
   results on activity failure instead of failing the whole workflow.
+- The durable per-trade dispatch path (see "Durable per-trade enrichment" below) — `enrichment/ids.py`,
+  `enrichment/models.py`, `enrichment/outbox.py`, `enrichment/persistence.py`, `enrichment/services.py`,
+  `enrichment/metrics.py`, and `migrations/versions/0002_persisted_trade_enrichment.py`.
 
 Out:
-- Wiring enrichment into the live `GET /trades` endpoint (T-5) — this feature ships the two
-  orchestration implementations and their tests; integrating either into the API route is tracked
-  separately if picked up later, to keep this feature's scope to the orchestration comparison itself.
-- A real Temporal server / worker deployment — Temporal's workflow code is tested via the
-  `temporalio.testing` time-skipping test environment, not a live cluster (see Testing plan).
+- A real Temporal server / worker deployment for the *hand-rolled-vs-Temporal comparison* itself —
+  `temporal_workflow.py`'s workflow/activity code is unit- and workflow-tested via the
+  `temporalio.testing` time-skipping test environment, not a live cluster (see Testing plan). The
+  durable per-trade path below *is* exercised against a real Temporal dev server + real Postgres in
+  Docker, since that's the whole point of that half of this feature.
+
+## Durable per-trade enrichment (the live path)
+
+`GET /trades` (`api/routes_trades.py`) never calls Temporal or an enrichment service itself — it only
+reads whatever the Temporal worker already persisted. Getting a result there durably, without ever
+losing a workflow start, is a transactional outbox:
+
+```
+Kafka trade
+  -> Redis deduplication
+  -> one PostgreSQL transaction (consumer/postgres_sink.write_trade)
+       -> insert trade
+       -> if enrichment_enabled: set enrichment_status=pending, insert pending trade_enrichment_jobs row
+  -> commit Kafka offset
+
+Temporal worker (enrichment/worker.py)
+  -> outbox dispatcher (enrichment/outbox.py) polls pending trade_enrichment_jobs rows
+  -> starts one deterministic-ID EnrichmentWorkflow per row (enrichment/ids.py)
+  -> marks the row dispatched
+
+EnrichmentWorkflow (enrichment/temporal_workflow.py)
+  -> runs risk_score + sentiment activities concurrently (enrichment/services.py)
+  -> retains partial successes and typed error names on failure
+  -> calls persist_trade_enrichment (enrichment/persistence.py)
+       -> updates the exact trade row's enrichment/enrichment_status
+       -> marks its outbox job completed
+
+GET /trades -> reads enrichment/enrichment_status from PostgreSQL only
+```
+
+Key points:
+- **Transactional outbox, not a direct Temporal call from the consumer**: the trade insert and its
+  pending job insert commit together in one DB transaction (`postgres_sink.write_trade`) — a crash
+  right after that commit can never lose the workflow start, since the pending row is still there for
+  the next outbox poll.
+- **Deterministic workflow IDs** (SHA-256 of `broker_id`/`trade_id`/`timestamp`, `enrichment/ids.py`)
+  make re-dispatch idempotent: a duplicate `start_workflow` call raises
+  `WorkflowAlreadyStartedError`, treated as success.
+- **`disabled` is API-only** — the stored `enrichment_status` column only ever holds
+  `not_requested`/`pending`/`completed`/`completed_with_errors`; `routes_trades.py` overrides the
+  *response* to `null`/`"disabled"` while the flag is off, without touching the stored row (see
+  `docs/features/feature-flags.md`). No backfill for trades ingested while the flag was off.
+- **Real vs. demo services** (`enrichment/services.py`): an HTTP POST to
+  `ENRICHMENT_RISK_SCORE_URL`/`ENRICHMENT_SENTIMENT_URL` if configured, else a deterministic
+  (SHA-256-seeded, varies per trade) demo handler. HTTP 4xx is non-retryable; timeouts, network
+  errors, and 5xx are retryable — same `RetryPolicy` as the hand-rolled-comparison workflow above.
+- **Observability** (`enrichment/metrics.py`): the Temporal worker exposes its own `/metrics`
+  (`enrichment_jobs_dispatched_total`, `enrichment_jobs_completed_total{status}`,
+  `enrichment_job_latency_seconds`), same pattern as the consumer's `observability/metrics.py`.
+- **Load characteristics observed against a real Docker stack**: a one-shot burst of ~1000 trades
+  with the flag on drains slowly against the single-node `temporal:latest` dev server (`server
+  start-dev`, sqlite-backed) and its default worker concurrency — expected for a demo-scale
+  deployment, not a defect. The outbox dispatcher's `run()` loop does recover cleanly from the
+  transient `CancelledError`/`RPCError` blips this produces (see the try/except around
+  `dispatch_once()`), confirmed live rather than only in unit tests.
+- The hand-rolled fan-out (`hand_rolled.py`) is unchanged and still tested, just no longer reachable
+  from the live route — it remains the "how would you build this without a framework" answer.
 
 ## Design
 
@@ -77,11 +136,20 @@ checked against `../PYTHON_VERSION_NOTES.md`.
   succeeds, one exhausts retries and degrades gracefully, one non-timeout error is *not* retried, and
   a service whose circuit is already open is rejected immediately without a network-shaped call.
 - `temporal_workflow.py`: activities are plain `async def` functions under `@activity.defn`, unit
-  tested directly with zero Temporal runtime (`tests/enrichment/test_temporal_activities.py`, 2 tests).
-  The workflow itself runs end to end against `temporalio.testing.WorkflowEnvironment`'s time-skipping
-  test server (`tests/enrichment/test_temporal_workflow.py`, 3 tests) — confirmed working in this
-  environment (the server binary downloads once from `temporal.download` and runs in-process, no
-  Docker/real cluster needed). Session-scoped environment fixture, fresh `Worker` + unique task queue
-  per test for isolation without repeated startup cost.
-- 17 enrichment tests total (6 circuit breaker, 6 hand-rolled orchestration, 2 Temporal activity, 3
-  Temporal workflow). 53/53 tests passing project-wide, ruff clean.
+  tested directly with zero Temporal runtime (`tests/enrichment/test_temporal_activities.py`). The
+  workflow itself runs end to end against `temporalio.testing.WorkflowEnvironment`'s time-skipping
+  test server (`tests/enrichment/test_temporal_workflow.py`) — confirmed working in this environment
+  (the server binary downloads once from `temporal.download` and runs in-process, no Docker/real
+  cluster needed). Session-scoped environment fixture, fresh `Worker` + unique task queue per test for
+  isolation without repeated startup cost. One test in this file (`test_workflow_with_payload_...`)
+  also seeds a real Postgres row via `pg_async_engine` and asserts the persisted result — proving the
+  persist-once-at-the-end-of-the-workflow behavior, not just the fan-out.
+- `outbox.py` (`tests/enrichment/test_outbox.py`): dispatch against real Postgres with a fake Temporal
+  client — starts exactly one workflow per pending row, treats `WorkflowAlreadyStartedError` as
+  success, marks rows dispatched, and (for the `run()` poll loop itself) stops promptly on `stop()`
+  and survives a simulated transient DB failure without crashing.
+- `persistence.py` (`tests/enrichment/test_persistence.py`): updates only the matching trade,
+  preserves partial results, sets the correct final status, marks the matching job completed, and
+  records the completion metric/latency.
+- 31 enrichment tests total. 137/137 tests passing project-wide, ruff clean (verified against a live
+  Docker stack — Postgres, Redis, Kafka, Temporal — not just mocked services).

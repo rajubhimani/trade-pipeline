@@ -4,11 +4,8 @@
 
 # Project layout
 
-## Two top-level things
+## The code
 
-- **`faang_python_full_prep.html`** — the source plan this whole project is built from: an 8-week
-  FAANG interview prep schedule (DSA, Python internals, async, security, system design, mocks). The
-  "project" track of that plan is what lives in `trade-pipeline/`.
 - **`trade-pipeline/`** — the actual code. A `uv`-managed Python project, `requires-python
   ">=3.11,<3.15"` ([pyproject.toml](../../trade-pipeline/pyproject.toml)).
 

@@ -1,0 +1,34 @@
+# Override file, not a `profiles:` entry — a Compose profile can only
+# include/exclude whole services, it can't swap what a service named
+# `kafka` points at. producer/consumer/dagster all reference the broker
+# purely by that service name (`KAFKA_BOOTSTRAP_SERVERS: kafka:29092`,
+# `depends_on: kafka`), so redefining `kafka` here under the *same* service
+# name is what lets this be a one-file swap instead of duplicating every
+# dependent service. See docs/DECISIONS.md "Redpanda as an opt-in swap for
+# Kafka".
+#
+# Usage: docker compose -f docker-compose.yml -f docker-compose.redpanda.yml up -d --build
+# (or `make up-redpanda`)
+services:
+  kafka:
+    image: redpandadata/redpanda:v26.1.14
+    # KAFKA_* env vars from the base file's `kafka` service are still
+    # present here (Compose merges environment maps, doesn't clear them) —
+    # harmless, Redpanda's binary is configured entirely via these command
+    # args / its own config file, not KAFKA_* env vars.
+    command:
+      - redpanda
+      - start
+      - --kafka-addr internal://0.0.0.0:29092,external://0.0.0.0:9092
+      - --advertise-kafka-addr internal://kafka:29092,external://localhost:9092
+      - --rpc-addr kafka:33145
+      - --advertise-rpc-addr kafka:33145
+      - --mode dev-container
+      - --smp 1
+      - --default-log-level=info
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -q 'Healthy:.*true'"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s

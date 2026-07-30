@@ -1,7 +1,6 @@
 # Docs index
 
-Tracking system for the trade-pipeline project (source plan: `../faang_python_full_prep.html`).
-Managed primarily via the `.claude/skills/` skills (`add-task`, `update-task`, `create-backlog-task`,
+Tracking system for the trade-pipeline project. Managed primarily via the `.claude/skills/` skills (`add-task`, `update-task`, `create-backlog-task`,
 `create-feature`) — prefer those over hand-editing so format stays consistent.
 
 - **tasks/backlog/** — one file per task (`T-<n>-<slug>.md`), from creation until done

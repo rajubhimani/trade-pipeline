@@ -50,6 +50,16 @@ the process's cwd instead.
 GNU make, not a shim) so the same `Makefile` works identically across the team's dev machines rather
 than needing a separate PowerShell-only wrapper.
 
+> **Update**: `make up` now also brings up `temporal` (dev server) and `temporal-worker` (its own
+> Dockerfile, `Dockerfile.temporal`) — the durable per-trade enrichment path (see
+> `docs/features/async-enrichment.md`) needs both. Per-service `environment:` blocks repeating the
+> same `POSTGRES_HOST`/`REDIS_HOST`/etc. across `migrate`/`producer`/`consumer`/`api`/`dagster`/
+> `temporal-worker` were consolidated into one shared, gitignored `docker-compose.env` (template:
+> `.env.example`) referenced via `env_file:` on each service. Kafka's 3 previously-anonymous Docker
+> volumes (`/etc/kafka/secrets`, `/mnt/shared/config`, `/var/lib/kafka/data` — declared by the image's
+> own Dockerfile, not this project's) are now named (`kafka-secrets`/`kafka-config`/`kafka-data`), so
+> every volume `make up` creates shows up as `trade-pipeline_*`, not an anonymous hash.
+
 ## Testing plan
 
 No new unit tests (this is infrastructure wiring, not application logic) — verified for real: `docker

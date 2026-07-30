@@ -1,10 +1,9 @@
 # trade-pipeline
 
-A real-time trade event pipeline with a secure query API — built as the hands-on project half of an
-8-week FAANG Python (senior) interview prep plan ([`../faang_python_full_prep.html`](../faang_python_full_prep.html)).
-Every component maps to a gap identified in that plan's diagnostic: DSA aside, the weak areas were
-Python internals, async/concurrency, web security, and system design — this project is those four
-things, built and tested, not just described.
+A real-time trade event pipeline with a secure query API — built as a hands-on project covering the
+gaps identified in a senior Python interview prep diagnostic: DSA aside, the weak areas were Python
+internals, async/concurrency, web security, and system design — this project is those four things,
+built and tested, not just described.
 
 Full docs (architecture, decisions, task history, a guided code walkthrough with clickable
 line-references) live in [`../docs/`](../docs/README.md). This README is the shorter, standalone
@@ -38,14 +37,21 @@ flowchart LR
     subgraph Serve
         API[FastAPI<br/>JWT RS256]
     end
+    subgraph Enrichment
+        OB[Outbox dispatcher]
+        TW[Temporal workflow]
+    end
     subgraph Batch
         DAG[Dagster asset]
     end
 
     P -->|~5% intentional dupes| K --> C
     C <-->|SETNX EX 300| R
-    C -->|manual commit after write| PG
-    API -->|async SELECT| PG
+    C -->|insert trade + pending job| PG
+    OB -->|poll pending jobs| PG
+    OB --> TW
+    TW -->|persist result| PG
+    API -->|async SELECT, reads stored enrichment only| PG
     DAG -->|batch, every minute| PG
     DAG -->|zstd compress| ARC
 ```
@@ -61,6 +67,7 @@ Full rationale for each of these is in [`../docs/DECISIONS.md`](../docs/DECISION
 | Decision | Why |
 |---|---|
 | Kafka, not RabbitMQ | Ordered, replayable log semantics per partition; consumer offset replay is what makes "never lose an event on crash" possible without a separate dead-letter/redelivery mechanism. |
+| `confluent-kafka`, not `kafka-python` | Thin binding over `librdkafka` (the reference C client) vs. a pure-Python protocol reimplementation — faster, more mature offset/consumer-group control, native `compression.type`. `kafka-python`'s main edge (no C toolchain to install) isn't a real constraint here. |
 | Redis `SETNX`-equivalent dedup, not a DB unique constraint | Sub-millisecond in-memory op keeps pace with per-event consumption; a DB round trip per duplicate is slower and noisier. |
 | RS256, not HS256, for JWT | Asymmetric — only the auth service needs the private key; services that only verify tokens need just the public key, smaller blast radius if one is compromised. |
 | Postgres (hot) + local zstd archive (cold), not ClickHouse | This is a learning/demo build at low volume — Postgres is genuinely queryable and keeps dependency count down. ClickHouse is the stated "what I'd change at 10x scale" answer (see below). |
@@ -72,6 +79,7 @@ Full rationale for each of these is in [`../docs/DECISIONS.md`](../docs/DECISION
 | Feature flags in Postgres, not env vars | Needs to flip at runtime without redeploying/restarting every API worker; the table is genuinely the source of truth — a direct DB write works identically to the admin API. |
 | `trades` range-partitioned by `timestamp` | Append-heavy time-series table — partitioning keeps each partition small and turns "drop old data" into an instant `DETACH PARTITION` instead of a slow `DELETE`. |
 | Real Postgres/Redis in tests, not SQLite/fakeredis | What actually made partitioning possible — SQLite can't autoincrement the composite primary key partitioning requires. `pytest-xdist` keeps it fast via per-worker schema/DB isolation. |
+| Alembic for table DDL, not `Base.metadata.create_all` | Versioned, reviewable schema changes with an `upgrade`/`downgrade` path — `create_all` only ever knows how to create the *current* model state, with no way to evolve a schema that already has data in it. Partition DDL stays outside Alembic (see `common/partitioning.py`) since "current/next month" isn't expressible as a static revision. |
 
 ## What I'd change at 10x scale
 
@@ -147,9 +155,14 @@ Login with the demo account (`demo` / `trade-pipeline-demo` — see `api/auth/us
 
 One command brings up the entire system — infra (Kafka, Redis, Postgres) plus the app's own
 `producer`/`consumer`/`api`/`dagster` services, all built from the one [`Dockerfile`](Dockerfile)
-(entrypoint picked per service via `command:` — see [DECISIONS.md](../docs/DECISIONS.md)):
+(entrypoint picked per service via `command:` — see [DECISIONS.md](../docs/DECISIONS.md)). The app
+services share their container-network config (Postgres/Redis/Kafka/Temporal DNS names) via
+`docker-compose.env`, referenced from `docker-compose.yml` via `env_file:` — gitignored like `.env`
+(see [`.env.example`](.env.example), the one tracked template for both), so copy it once first and
+swap each `localhost` for its Compose service name (`postgres`, `redis`, `kafka`, `temporal`):
 
 ```bash
+cp .env.example docker-compose.env   # then edit: localhost -> postgres/redis/kafka/temporal
 make up       # docker compose up -d --build
 make down     # docker compose down -v
 make ps       # docker compose ps
@@ -164,6 +177,17 @@ Docker path. Once up: API on `:8000`, consumer `/metrics` on `:8001`, Dagster UI
 
 `make` isn't installed on Windows by default — `winget install ezwinports.make` gets a real GNU make
 (restart your shell afterward so the PATH update takes effect).
+
+### Running against Redpanda instead of Kafka
+
+```bash
+make up-redpanda   # docker compose -f docker-compose.yml -f docker-compose.redpanda.yml up -d --build
+```
+
+Swaps the broker only — same topology, same `kafka` hostname/port everything else already points at
+(`docker-compose.redpanda.yml` redefines the `kafka` service in place; see its header comment and
+[DECISIONS.md](../docs/DECISIONS.md) "Redpanda as an opt-in broker swap"). No application code
+changes: `confluent-kafka` talks to Redpanda over the same wire protocol.
 
 ## Feature flags
 
@@ -180,10 +204,14 @@ curl -X PATCH localhost:8000/admin/feature-flags/enrichment_enabled \
 psql -c "UPDATE feature_flags SET enabled = true WHERE name = 'enrichment_enabled';"
 ```
 
-`enrichment_enabled` gates whether `GET /trades` attaches demo enrichment data (see
-[`../docs/features/feature-flags.md`](../docs/features/feature-flags.md) and
-[`../docs/features/async-enrichment.md`](../docs/features/async-enrichment.md)) — the response's
-`enrichment` field is always present, `null` when the flag is off.
+`enrichment_enabled` gates whether newly-ingested trades get a durable per-trade Temporal enrichment
+workflow (transactional outbox in `consumer/postgres_sink.py`, dispatched by the Temporal worker's
+outbox poller) — see [`../docs/features/feature-flags.md`](../docs/features/feature-flags.md) and
+[`../docs/features/async-enrichment.md`](../docs/features/async-enrichment.md) ("Durable per-trade
+enrichment"). `GET /trades` never calls Temporal or an enrichment service itself — it only reads
+`enrichment`/`enrichment_status` already persisted on the trade row; both are present but overridden
+to `null`/`"disabled"` in the response while the flag is off, and become visible again (with no
+backfill for trades ingested while it was off) once re-enabled.
 
 ## Development
 

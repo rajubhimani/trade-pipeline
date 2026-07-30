@@ -26,8 +26,10 @@ Out:
 - Any UI/frontend — API only.
 - OAuth2 / third-party identity providers — this is a self-contained RS256 JWT implementation, per the
   plan's Week 5 track.
-- The enrichment service calls (component 4, T-6) — `GET /trades` returns raw stored trade rows only,
-  no enrichment fan-out yet.
+- Live enrichment service calls — `GET /trades` returns stored trade rows plus whatever enrichment
+  the Temporal worker already persisted for them (see `docs/features/async-enrichment.md`'s "Durable
+  per-trade enrichment" section); it never calls an enrichment service or Temporal itself on the
+  request path.
 - Real user registration/management — one hardcoded demo account
   (`src/trade_pipeline/api/auth/users.py`) is enough to exercise the full auth flow; building a real
   user system is out of scope for this project's focus (pipeline + security hardening).

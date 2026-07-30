@@ -33,15 +33,15 @@ flowchart LR
 
 ## Code references
 
-- [`generate_trade(broker_id)`](../../trade-pipeline/src/trade_pipeline/producer/fake_trades.py#L40) —
+- [`generate_trade(broker_id)`](../../trade-pipeline/src/trade_pipeline/producer/fake_trades.py#L57) —
   builds one random `TradeEvent` for a given broker id.
-- [`run_producer(...)`](../../trade-pipeline/src/trade_pipeline/producer/fake_trades.py#L50) — the main
+- [`run_producer(...)`](../../trade-pipeline/src/trade_pipeline/producer/fake_trades.py#L67) — the main
   loop: keeps a rolling window of the last 50 events (`last_events`), and with `DUPLICATE_RATE = 0.05`
   probability re-emits one verbatim instead of generating a new one.
-- [`_serialize(event)`](../../trade-pipeline/src/trade_pipeline/producer/fake_trades.py#L28) — JSON
+- [`_serialize(event)`](../../trade-pipeline/src/trade_pipeline/producer/fake_trades.py#L39) — JSON
   encoding; `Decimal` and `datetime` aren't JSON-native so they're converted to `str`/`isoformat()`
   here and decoded back symmetrically in the consumer's
-  [`_deserialize`](../../trade-pipeline/src/trade_pipeline/consumer/dedup_consumer.py#L26).
+  [`_deserialize`](../../trade-pipeline/src/trade_pipeline/consumer/dedup_consumer.py#L28).
 - Uses the plain synchronous `confluent_kafka.Producer` (poll/produce loop) — **not** the beta
   `AIOProducer` API. See [DECISIONS.md](../DECISIONS.md) and
   [features/kafka-producer.md](../features/kafka-producer.md) for why.

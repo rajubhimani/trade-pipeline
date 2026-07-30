@@ -1,10 +1,21 @@
-.PHONY: install lint test audit check services-up services-down up down logs ps restart demo
+.PHONY: install lint test audit check services-up services-down up up-redpanda down logs ps restart demo db-upgrade db-revision
 
 install:
 	uv sync
 
 lint:
 	uv run ruff check .
+
+# Apply pending Alembic migrations against POSTGRES_DSN (default: localhost,
+# see common/config.py) — same path scripts/migrate.py runs in Docker.
+db-upgrade:
+	uv run alembic upgrade head
+
+# Autogenerate a new revision from db_models.py changes. Always read the
+# generated file before committing — autogenerate misses renames and some
+# type changes.
+db-revision:
+	uv run alembic revision --autogenerate -m "$(m)"
 
 # Tests need real Postgres + Redis reachable at localhost (docker-compose.yml
 # services) — see tests/conftest.py. -n auto runs them in parallel via
@@ -30,6 +41,13 @@ services-down:
 # (keys-init, migrate) in order via each service's `depends_on` condition.
 up:
 	docker compose up -d --build
+
+# Same stack, Redpanda instead of Kafka as the broker — see
+# docker-compose.redpanda.yml's header comment for why this is an override
+# file, not a `profiles:` entry. `kafka` is still the service/hostname
+# everything else depends on; only its image changes.
+up-redpanda:
+	docker compose -f docker-compose.yml -f docker-compose.redpanda.yml up -d --build
 
 down:
 	docker compose down -v

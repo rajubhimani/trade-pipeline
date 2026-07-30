@@ -10,6 +10,16 @@ services:
     image: apache/kafka:4.3.1
     ports:
       - "9092:9092"
+    volumes:
+      # The image's own Dockerfile declares VOLUME at these 3 paths — left
+      # unmapped, Compose backs each with a fresh anonymous volume instead
+      # (no name, no obvious owner, easy to forget and leave orphaned after
+      # a `down` without `-v`). Named explicitly here so every volume this
+      # project creates shows up under `docker volume ls` as
+      # `trade-pipeline_*`, same as pgdata/keys/archive/temporal-data below.
+      - kafka-secrets:/etc/kafka/secrets
+      - kafka-config:/mnt/shared/config
+      - kafka-data:/var/lib/kafka/data
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
@@ -45,10 +55,12 @@ services:
     image: postgres:18.4-alpine
     ports:
       - "5432:5432"
-    environment:
-      POSTGRES_USER: trade_pipeline
-      POSTGRES_PASSWORD: trade_pipeline
-      POSTGRES_DB: trade_pipeline
+    # POSTGRES_USER/PASSWORD/DB come from docker-compose.env — the same
+    # names the postgres image itself expects for first-run initialization,
+    # so this is the single source of truth for those credentials rather
+    # than a second hardcoded copy that could drift from the one the app
+    # services connect with.
+    env_file: docker-compose.env
     volumes:
       # postgres 18+ images changed the expected mount point to the parent
       # dir (pg_ctlcluster-style major-version subdirectories) — mounting at
@@ -61,8 +73,37 @@ services:
       timeout: 5s
       retries: 10
 
-  # --- Application services, all sharing the one Dockerfile image (see its
-  # own header comment) — `command:` alone selects which entrypoint runs. ---
+  # Single-container Temporal dev server (embeds the `temporal` CLI's
+  # `server start-dev`, sqlite-backed — no separate Cassandra/MySQL/Postgres
+  # needed for Temporal itself, matching how kafka/redis/postgres above are
+  # each single-node dev setups too). gRPC on 7233 (what the worker/API
+  # connect to), Web UI on 8233.
+  temporal:
+    image: temporalio/temporal:latest
+    command: server start-dev --ip 0.0.0.0 --db-filename /home/temporal/temporal.db
+    ports:
+      - "7233:7233"
+      - "8233:8233"
+    volumes:
+      # The image runs as uid 1000 ("temporal"), whose home dir is the only
+      # path pre-owned by that user — a named volume mounted at a fresh path
+      # like /data is created root:root, which the process then can't write
+      # into (surfaces as a misleading SQLite "out of memory (14)" error).
+      - temporal-data:/home/temporal
+    healthcheck:
+      # Same binary as the server itself (`temporal` CLI ships in this
+      # image) — succeeds only once the frontend service is actually
+      # accepting requests, not just once the process has started.
+      test: ["CMD", "temporal", "operator", "cluster", "health", "--address", "localhost:7233"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+
+  # --- Application services. api/producer/consumer share the core Dockerfile
+  # image (see its own header comment) — `command:` selects the entrypoint.
+  # dagster and temporal-worker each have their own Dockerfile (Dockerfile.
+  # dagster / Dockerfile.temporal) so their SDKs don't bloat the core image. ---
 
   # One-shot: generates the JWT RS256 keypair into the `keys` volume if it
   # doesn't already exist (see scripts/generate_keys.py — replaces the
@@ -81,8 +122,7 @@ services:
   migrate:
     build: .
     command: python -m trade_pipeline.scripts.migrate
-    environment:
-      POSTGRES_DSN: postgresql+asyncpg://trade_pipeline:trade_pipeline@postgres:5432/trade_pipeline
+    env_file: docker-compose.env
     depends_on:
       postgres:
         condition: service_healthy
@@ -90,8 +130,7 @@ services:
   producer:
     build: .
     command: python -m trade_pipeline.producer.fake_trades
-    environment:
-      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    env_file: docker-compose.env
     depends_on:
       kafka:
         condition: service_healthy
@@ -101,10 +140,7 @@ services:
     command: python -m trade_pipeline.consumer.dedup_consumer
     ports:
       - "8001:8001" # /metrics (see observability/metrics.py)
-    environment:
-      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
-      REDIS_URL: redis://redis:6379/0
-      POSTGRES_DSN: postgresql+asyncpg://trade_pipeline:trade_pipeline@postgres:5432/trade_pipeline
+    env_file: docker-compose.env
     depends_on:
       kafka:
         condition: service_healthy
@@ -118,9 +154,8 @@ services:
     command: uvicorn trade_pipeline.api.main:build_production_app --factory --host 0.0.0.0 --port 8000
     ports:
       - "8000:8000"
+    env_file: docker-compose.env
     environment:
-      REDIS_URL: redis://redis:6379/0
-      POSTGRES_DSN: postgresql+asyncpg://trade_pipeline:trade_pipeline@postgres:5432/trade_pipeline
       CORS_ORIGINS: http://localhost:8000
     volumes:
       - keys:/app/keys
@@ -133,15 +168,30 @@ services:
         condition: service_completed_successfully
 
   dagster:
-    build: .
-    command: dagster dev -m trade_pipeline.dagster_pipeline.definitions --host 0.0.0.0
+    build:
+      context: .
+      dockerfile: Dockerfile.dagster
     ports:
       - "3000:3000"
-    environment:
-      POSTGRES_DSN: postgresql+asyncpg://trade_pipeline:trade_pipeline@postgres:5432/trade_pipeline
+    env_file: docker-compose.env
     volumes:
       - archive:/app/archive
     depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  temporal-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.temporal
+    ports:
+      - "8002:8002" # /metrics (see enrichment/metrics.py)
+    env_file: docker-compose.env
+    depends_on:
+      temporal:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
       migrate:
         condition: service_completed_successfully
 
@@ -149,3 +199,7 @@ volumes:
   pgdata:
   keys:
   archive:
+  temporal-data:
+  kafka-secrets:
+  kafka-config:
+  kafka-data:

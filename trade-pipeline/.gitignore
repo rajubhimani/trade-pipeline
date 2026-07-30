@@ -12,8 +12,11 @@ wheels/
 # Local dev secrets — never commit real keys
 keys/*.pem
 
-# Local env overrides — .env.example is the tracked, documented template
-.env
+# Local env overrides — any *.env file (.env, docker-compose.env, or a
+# differently-named setup someone adds later) is ignored by this one glob.
+# .env.example — the single tracked template for all of them — doesn't
+# match it (ends in .example, not .env) and stays tracked.
+*.env
 
 # Local stand-in for S3 cold storage (dagster_pipeline/archival.py) — generated data, not source
 archive/

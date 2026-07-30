@@ -1,4 +1,4 @@
-# FAANG Python Senior — Full 8-Week Prep Plan
+# Python Senior — Full 8-Week Prep Plan
 
 Diagnostic score: 10/30 (33%) · 2 hours/day · Python 3.11 → 3.14 coverage · DSA + Project parallel tracks
 
@@ -95,7 +95,7 @@ Diagnostic score: 10/30 (33%) · 2 hours/day · Python 3.11 → 3.14 coverage ·
 
 **Badge:** DSA
 
-> **Why first** — FAANG DSA screens come before Python depth. You failed the streaming median question (said binary tree — answer is two heaps). That ends a phone screen. Fix this before anything else.
+> **Why first** — Senior DSA screens come before Python depth. You failed the streaming median question (said binary tree — answer is two heaps). That ends a phone screen. Fix this before anything else.
 
 ### Pattern order — do exactly this sequence
 
@@ -604,14 +604,15 @@ Exactly what you were asked in Q5 — but built. Every component maps to a weak 
 |---|---|---|
 | Component 1 | Week 1 | **Kafka producer** — Simulates N broker feeds. Publishes trade events (broker_id, trade_id, instrument, price, qty, timestamp). Intentionally duplicates ~5% of events. Uses confluent-kafka-python. On 3.14: use compression.zstd for message compression. |
 | Component 2 | Week 1 | **Consumer + Redis dedup** — `SETNX trade:{broker_id}:{trade_id} EX 300` — duplicate = drop, new = process. Manual offset commit only after successful write. Covers: Kafka offset semantics, Redis atomic ops, at-least-once delivery. |
+| Component 2b | Week 1 | **Alembic migrations** — Not used in the actual build (schema was hand-written DDL for a fixed 3-table demo), but a senior interviewer will ask "how do you evolve the schema safely?" — know it anyway: `alembic init`, autogenerate vs hand-written revisions, `upgrade head` / `downgrade -1`, running migrations in CI before app deploy, and why autogenerate can't detect every change (renames, some type changes) so you diff-review generated revisions before committing them. |
 | Component 3 | Week 2–3 | **FastAPI query layer** — `GET /trades` with filters. Full security stack: JWT RS256 via `Depends()`, security headers middleware, explicit CORS, slowapi rate limiting, Pydantic input validation, global error handler. Full async with asyncio throughout. |
 | Component 4 | Week 4 | **Async enrichment** — Calls 3 mock enrichment services in parallel. gather() + return_exceptions=True + wait_for(timeout=2) per call + tenacity retry on TimeoutError only + circuit breaker after 3 failures. Graceful partial response on failure. |
 | Component 5 | Week 4–5 | **Observability + security** — Prometheus /metrics: consumer lag, dedup hit rate, write latency p99, API p99. Audit log middleware. pip-audit in Makefile. JWT blocklist in Redis. Error sanitisation. |
-| README | Week 6–7 | **Write it as a design doc** — Problem statement. Architecture diagram (5 layers). Why Kafka not RabbitMQ. Why Redis dedup not DB. Why RS256 not HS256. Why ClickHouse not Postgres for hot data. How to run. What you'd change at 10x scale. Python version notes: what changes if the project runs on 3.11 vs 3.14. |
+| README | Week 6–7 | **Write it as a design doc** — Problem statement. Architecture diagram (5 layers). Why Kafka not RabbitMQ. Why Redis dedup not DB. Why RS256 not HS256. Why ClickHouse not Postgres for hot data. Why no Alembic — manual DDL was fine for a fixed 3-table demo, note how you'd introduce it (init + first revision) before adding a second schema change. How to run. What you'd change at 10x scale. Python version notes: what changes if the project runs on 3.11 vs 3.14. |
 
 ## Three things to fix first
 
-> **Biggest risk** — DSA. FAANG screens on it before Python depth. Weak DSA ends the process early — regardless of everything else. Start Week 1 here.
+> **Biggest risk** — DSA. Senior screens on it before Python depth. Weak DSA ends the process early — regardless of everything else. Start Week 1 here.
 
 > **Thinking pattern to break** — You name the tool before drawing the flow. In system design: clarify → draw data flow → name components → justify each. Never lead with "I'd use Kafka."
 
@@ -619,4 +620,4 @@ Exactly what you were asked in Q5 — but built. Every component maps to a weak 
 
 ---
 
-_FAANG Python Senior Prep · Python 3.11–3.14 · 8 weeks · 2hr/day · April 2026_
+_Python Senior Prep · Python 3.11–3.14 · 8 weeks · 2hr/day · April 2026_

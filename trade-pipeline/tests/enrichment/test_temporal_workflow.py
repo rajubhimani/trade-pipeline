@@ -13,16 +13,23 @@ isolated without paying the startup cost repeatedly.
 """
 
 import uuid
+from datetime import UTC, datetime
+from decimal import Decimal
 
 import pytest_asyncio
+from sqlalchemy import insert, select
+from sqlalchemy.ext.asyncio import async_sessionmaker
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
+from trade_pipeline.common.db_models import Trade
 from trade_pipeline.enrichment.mock_services import (
     always_bad_request,
     always_succeeds,
     always_times_out,
 )
+from trade_pipeline.enrichment.models import EnrichmentWorkflowInput, TradeEnrichmentPayload
+from trade_pipeline.enrichment.persistence import EnrichmentPersistenceActivities
 from trade_pipeline.enrichment.temporal_workflow import (
     EnrichmentWorkflow,
     call_enrichment_service,
@@ -46,7 +53,7 @@ async def _run_workflow(env: WorkflowEnvironment, service_names: list[str]) -> d
     ):
         return await env.client.execute_workflow(
             EnrichmentWorkflow.run,
-            service_names,
+            EnrichmentWorkflowInput(service_names=service_names),
             id=f"wf-{uuid.uuid4()}",
             task_queue=task_queue,
         )
@@ -83,3 +90,68 @@ async def test_workflow_retries_timeout_then_gives_up_gracefully(env):
 
     assert result["wf-timeout"].data is None
     assert result["wf-timeout"].error is not None
+
+
+async def test_workflow_with_payload_persists_result_to_the_exact_trade(env, pg_async_engine):
+    """The real per-trade path (outbox.py's dispatch shape): a workflow
+    given a ``TradeEnrichmentPayload`` runs both services (against the
+    deterministic demo handler — no URL registered for either service name
+    in this test) and persists once, degrading gracefully is covered above.
+    """
+    session_factory = async_sessionmaker(bind=pg_async_engine, expire_on_commit=False)
+    timestamp = datetime(2026, 7, 26, tzinfo=UTC)
+    async with session_factory() as session:
+        await session.execute(
+            insert(Trade).values(
+                broker_id="broker-wf",
+                trade_id="t-wf-1",
+                symbol="AAPL",
+                qty=5,
+                price=Decimal("10.00"),
+                timestamp=timestamp,
+            )
+        )
+        await session.commit()
+
+    payload = TradeEnrichmentPayload(
+        broker_id="broker-wf",
+        trade_id="t-wf-1",
+        timestamp=timestamp.isoformat(),
+        symbol="AAPL",
+        qty=5,
+        price="10.00",
+        service_names=["risk_score", "sentiment"],
+    )
+    persistence_activities = EnrichmentPersistenceActivities(session_factory)
+
+    # Not routed through _run_workflow — that helper always builds
+    # EnrichmentWorkflowInput with no payload; this test needs the real
+    # per-trade shape (payload set), so it drives the Worker/execute_workflow
+    # call directly.
+    task_queue = f"enrichment-{uuid.uuid4()}"
+    async with Worker(
+        env.client,
+        task_queue=task_queue,
+        workflows=[EnrichmentWorkflow],
+        activities=[call_enrichment_service, persistence_activities.persist_trade_enrichment],
+    ):
+        result = await env.client.execute_workflow(
+            EnrichmentWorkflow.run,
+            EnrichmentWorkflowInput(service_names=payload.service_names, payload=payload),
+            id=f"wf-{uuid.uuid4()}",
+            task_queue=task_queue,
+        )
+
+    assert result["risk_score"].error is None
+    assert result["sentiment"].error is None
+
+    async with session_factory() as session:
+        row = (
+            await session.execute(
+                select(Trade).where(Trade.broker_id == "broker-wf", Trade.trade_id == "t-wf-1")
+            )
+        ).scalar_one()
+
+    assert row.enrichment_status == "completed"
+    assert row.enrichment["risk_score"]["data"]["trade_id"] == "t-wf-1"
+    assert row.enrichment["sentiment"]["data"]["trade_id"] == "t-wf-1"

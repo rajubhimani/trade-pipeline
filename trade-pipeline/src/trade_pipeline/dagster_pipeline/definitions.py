@@ -99,8 +99,7 @@ aggregation_schedule = dg.ScheduleDefinition(
 
 
 def _production_dsn() -> str:
-    config = load_config()
-    return config.postgres.dsn.replace("+asyncpg", "+psycopg")
+    return load_config().postgres.sync_dsn
 
 
 defs = dg.Definitions(

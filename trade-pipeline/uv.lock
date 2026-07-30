@@ -2771,12 +2771,11 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
+    { name = "alembic" },
     { name = "argon2-cffi" },
     { name = "asyncpg" },
     { name = "confluent-kafka" },
     { name = "cryptography" },
-    { name = "dagster" },
-    { name = "dagster-webserver" },
     { name = "fastapi" },
     { name = "prometheus-client" },
     { name = "prometheus-fastapi-instrumentator" },
@@ -2787,14 +2786,19 @@ dependencies = [
     { name = "redis" },
     { name = "sqlalchemy", extra = ["asyncio"] },
     { name = "structlog" },
-    { name = "temporalio" },
     { name = "tenacity" },
     { name = "uvicorn", extra = ["standard"] },
-    { name = "zstandard", marker = "python_full_version < '3.14'" },
 ]
 
 [package.dev-dependencies]
+dagster = [
+    { name = "dagster" },
+    { name = "dagster-webserver" },
+    { name = "zstandard", marker = "python_full_version < '3.14'" },
+]
 dev = [
+    { name = "dagster" },
+    { name = "dagster-webserver" },
     { name = "httpx" },
     { name = "mypy" },
     { name = "pip-audit" },
@@ -2803,44 +2807,56 @@ dev = [
     { name = "pytest-cov" },
     { name = "pytest-xdist" },
     { name = "ruff" },
+    { name = "temporalio" },
+    { name = "zstandard", marker = "python_full_version < '3.14'" },
+]
+temporal = [
+    { name = "temporalio" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "aiohttp", specifier = ">=3.10" },
-    { name = "argon2-cffi", specifier = ">=23.1" },
-    { name = "asyncpg", specifier = ">=0.30" },
-    { name = "confluent-kafka", specifier = ">=2.6" },
-    { name = "cryptography", specifier = ">=43" },
-    { name = "dagster", specifier = ">=1.9" },
-    { name = "dagster-webserver", specifier = ">=1.9" },
-    { name = "fastapi", specifier = ">=0.115" },
-    { name = "prometheus-client", specifier = ">=0.21" },
-    { name = "prometheus-fastapi-instrumentator", specifier = ">=7.0" },
-    { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
-    { name = "pydantic", specifier = ">=2.9" },
-    { name = "pydantic-settings", specifier = ">=2.6" },
-    { name = "pyjwt", specifier = ">=2.9" },
-    { name = "redis", specifier = ">=5.2" },
-    { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0" },
-    { name = "structlog", specifier = ">=24.4" },
-    { name = "temporalio", specifier = ">=1.9" },
-    { name = "tenacity", specifier = ">=9.0" },
-    { name = "uvicorn", extras = ["standard"], specifier = ">=0.32" },
-    { name = "zstandard", marker = "python_full_version < '3.14'", specifier = ">=0.23" },
+    { name = "aiohttp", specifier = "~=3.0" },
+    { name = "alembic", specifier = "~=1.0" },
+    { name = "argon2-cffi", specifier = "~=25.0" },
+    { name = "asyncpg", specifier = "~=0.31.0" },
+    { name = "confluent-kafka", specifier = "~=2.0" },
+    { name = "cryptography", specifier = "~=49.0" },
+    { name = "fastapi", specifier = "~=0.140.0" },
+    { name = "prometheus-client", specifier = "~=0.26.0" },
+    { name = "prometheus-fastapi-instrumentator", specifier = "~=8.0" },
+    { name = "psycopg", extras = ["binary"], specifier = "~=3.0" },
+    { name = "pydantic", specifier = "~=2.0" },
+    { name = "pydantic-settings", specifier = "~=2.0" },
+    { name = "pyjwt", specifier = "~=2.0" },
+    { name = "redis", specifier = "~=8.0" },
+    { name = "sqlalchemy", extras = ["asyncio"], specifier = "~=2.0" },
+    { name = "structlog", specifier = "~=26.0" },
+    { name = "tenacity", specifier = "~=9.0" },
+    { name = "uvicorn", extras = ["standard"], specifier = "~=0.51.0" },
 ]
 
 [package.metadata.requires-dev]
-dev = [
-    { name = "httpx", specifier = ">=0.28" },
-    { name = "mypy", specifier = ">=1.13" },
-    { name = "pip-audit", specifier = ">=2.7" },
-    { name = "pytest", specifier = ">=8.3" },
-    { name = "pytest-asyncio", specifier = ">=0.24" },
-    { name = "pytest-cov", specifier = ">=6.0" },
-    { name = "pytest-xdist", specifier = ">=3.6" },
-    { name = "ruff", specifier = ">=0.8" },
+dagster = [
+    { name = "dagster", specifier = "~=1.0" },
+    { name = "dagster-webserver", specifier = "~=1.0" },
+    { name = "zstandard", marker = "python_full_version < '3.14'", specifier = "~=0.25.0" },
 ]
+dev = [
+    { name = "dagster", specifier = "~=1.0" },
+    { name = "dagster-webserver", specifier = "~=1.0" },
+    { name = "httpx", specifier = "~=0.28.0" },
+    { name = "mypy", specifier = "~=2.0" },
+    { name = "pip-audit", specifier = "~=2.0" },
+    { name = "pytest", specifier = "~=9.0" },
+    { name = "pytest-asyncio", specifier = "~=1.0" },
+    { name = "pytest-cov", specifier = "~=7.0" },
+    { name = "pytest-xdist", specifier = "~=3.0" },
+    { name = "ruff", specifier = "~=0.16.0" },
+    { name = "temporalio", specifier = "~=1.0" },
+    { name = "zstandard", marker = "python_full_version < '3.14'", specifier = "~=0.25.0" },
+]
+temporal = [{ name = "temporalio", specifier = "~=1.0" }]
 
 [[package]]
 name = "types-protobuf"

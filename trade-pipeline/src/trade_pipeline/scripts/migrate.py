@@ -7,7 +7,7 @@ containers start concurrently, and the API has no schema-init call of its
 own (it only ever reads). A dedicated one-shot `migrate` service that both
 depend on (`condition: service_completed_successfully`) guarantees the
 schema and partitions exist before either touches Postgres, rather than
-relying on `create_all`/`ensure_partitions`'s idempotency to paper over the
+relying on Alembic's/`ensure_partitions`'s idempotency to paper over the
 race.
 """
 
@@ -21,6 +21,6 @@ logger = logging.getLogger(__name__)
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     config = load_config()
-    engine = make_engine(config.postgres.dsn.replace("+asyncpg", "+psycopg"))
+    engine = make_engine(config.postgres.sync_dsn)
     init_schema(engine)
     logger.info("schema + partitions ready")

@@ -1,7 +1,7 @@
 # DSA practice log
 
-A study log, not code — one file per pattern from the plan's Week 1–2 DSA foundations
-(`../../faang_python_full_prep.html#w12`). Each pattern file has: the plain-English idea, the
+A study log, not code — one file per pattern from the plan's Week 1–2 DSA foundations.
+Each pattern file has: the plain-English idea, the
 problem list from the plan (as checkboxes), and a running notes section for what actually tripped you
 up — the plan's own review step ("write the pattern in plain English... what would you do differently")
 is what this is for.

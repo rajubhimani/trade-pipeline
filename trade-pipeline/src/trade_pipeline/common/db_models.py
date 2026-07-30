@@ -10,9 +10,11 @@ This project tests exclusively against a real Postgres (via Docker), not a
 second dialect standing in for it — no dual-dialect hedging in the schema.
 """
 
+from datetime import UTC, datetime
 from decimal import Decimal
 
 from sqlalchemy import Boolean, DateTime, Identity, Integer, Numeric, String, UniqueConstraint
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -57,6 +59,45 @@ class Trade(Base):
     # Python-side default only (no server_default): every insert already goes
     # through the ORM (postgres_sink.write_trade), so this is always set.
     archived: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    # Set by the Temporal persistence activity once its enrichment workflow
+    # completes (see enrichment/persistence.py) — null until then, and stays
+    # null forever for trades ingested while enrichment_enabled was off (no
+    # backfill; see docs/features/feature-flags.md).
+    enrichment: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # One of "not_requested" | "pending" | "completed" | "completed_with_errors".
+    # "disabled" is an API-only presentation value (routes_trades.py) never
+    # written to this column — see docs/features/async-enrichment.md.
+    enrichment_status: Mapped[str] = mapped_column(String(32), default="not_requested", index=True)
+
+
+class TradeEnrichmentJob(Base):
+    """Transactional outbox row for the per-trade enrichment workflow.
+
+    Inserted in the *same* DB transaction as its trade (see
+    consumer/postgres_sink.write_trade) so a crash between "insert trade" and
+    "start the Temporal workflow" can never lose the workflow start — the
+    Temporal worker's outbox dispatcher (enrichment/outbox.py) polls rows
+    still in ``pending`` and starts one deterministic-ID workflow per row.
+    """
+
+    __tablename__ = "trade_enrichment_jobs"
+
+    # Deterministic (enrichment/ids.compute_workflow_id), not autoincrement —
+    # doubles as the Temporal workflow ID, so re-dispatching an already-
+    # started row is naturally idempotent (WorkflowAlreadyStartedError).
+    workflow_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    broker_id: Mapped[str] = mapped_column(String(64), index=True)
+    trade_id: Mapped[str] = mapped_column(String(64), index=True)
+    trade_timestamp: Mapped[object] = mapped_column(DateTime(timezone=True))
+    # Immutable trade snapshot passed to the workflow — see
+    # enrichment/models.TradeEnrichmentPayload.
+    payload: Mapped[dict] = mapped_column(JSONB)
+    # One of "pending" | "dispatched" | "completed".
+    status: Mapped[str] = mapped_column(String(32), default="pending", index=True)
+    created_at: Mapped[object] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+    dispatched_at: Mapped[object | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class FeatureFlag(Base):

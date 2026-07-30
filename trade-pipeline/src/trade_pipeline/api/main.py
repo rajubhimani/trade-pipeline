@@ -26,8 +26,6 @@ from trade_pipeline.api.routes_admin import router as admin_router
 from trade_pipeline.api.routes_auth import router as auth_router
 from trade_pipeline.api.routes_trades import router as trades_router
 from trade_pipeline.api.settings import ApiSettings
-from trade_pipeline.enrichment.circuit_breaker import CircuitBreaker
-from trade_pipeline.enrichment.mock_services import always_succeeds
 
 logger = structlog.get_logger()
 
@@ -65,19 +63,6 @@ def create_app(
     app.state.api_settings = api_settings
     app.state.token_blocklist = TokenBlocklist(redis_client)
     app.state.refresh_token_store = RefreshTokenStore(redis_client)
-
-    # Demo enrichment services for the "enrichment_enabled" feature flag
-    # (common/feature_flags.py) — fake data, not a real integration; see
-    # docs/features/async-enrichment.md for scope. Kept on app.state, not
-    # created fresh per request, so circuit-breaker failure state persists
-    # across requests the way it would need to in a real deployment.
-    app.state.enrichment_services = {
-        "risk_score": always_succeeds({"score": 42}).run,
-        "sentiment": always_succeeds({"index": "neutral"}).run,
-    }
-    app.state.enrichment_breakers = {
-        name: CircuitBreaker() for name in app.state.enrichment_services
-    }
 
     app.add_middleware(
         CORSMiddleware,

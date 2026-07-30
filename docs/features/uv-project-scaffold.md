@@ -5,8 +5,8 @@ Task: docs/tasks/completed/T-1-uv-project-scaffold.md, docs/tasks/completed/T-2-
 
 ## Problem / motivation
 
-The 8-week prep plan (`../../faang_python_full_prep.html`) requires a real, runnable project — not
-just notes — and requires it to run and be compared across Python 3.11 through 3.14. That needs a
+The 8-week prep plan requires a real, runnable project — not just notes — and requires it to run and
+be compared across Python 3.11 through 3.14. That needs a
 project layout and dependency manager that make multi-version work easy, plus a one-command local
 environment for the services the pipeline depends on (Kafka, Redis, Postgres).
 

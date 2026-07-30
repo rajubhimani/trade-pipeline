@@ -5,12 +5,14 @@ Postgres?" Yes, for an append-heavy time-series table like `trades` — see
 docs/features/postgres-partitioning.md for the full rationale.
 
 `Trade.__table_args__` (common/db_models.py) declares
-`postgresql_partition_by="RANGE (timestamp)"`, so `Base.metadata.create_all`
-already emits the correct `PARTITION BY RANGE` parent table DDL. What the ORM
-can't do on its own is create the actual child partitions — this module
-does that: a DEFAULT catch-all partition (without one, an insert whose
-timestamp doesn't fall in any explicit range is rejected outright) plus
-explicit monthly partitions for the current and next month.
+`postgresql_partition_by="RANGE (timestamp)"`, so the Alembic migration that
+creates the `trades` table (migrations/versions/0001_initial_schema.py)
+already emits the correct `PARTITION BY RANGE` parent table DDL. What a
+migration can't do — it's a one-time static revision — is create the actual
+child partitions on a rolling basis: this module does that instead, at
+runtime, every startup: a DEFAULT catch-all partition (without one, an
+insert whose timestamp doesn't fall in any explicit range is rejected
+outright) plus explicit monthly partitions for the current and next month.
 
 Verified against a live `postgres:18.4-alpine` container (this project's own
 docker-compose service) — see docs/features/postgres-partitioning.md.
