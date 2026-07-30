@@ -22,10 +22,12 @@ from sqlalchemy import create_engine
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 
-from trade_pipeline.common.db_models import Trade
+from trade_pipeline.common.db_models import FeatureFlag, Trade, TradeEnrichmentJob
 from trade_pipeline.common.migrations import upgrade_to_head
 from trade_pipeline.common.models import TradeEvent
 from trade_pipeline.common.partitioning import ensure_partitions
+from trade_pipeline.enrichment.ids import compute_workflow_id
+from trade_pipeline.enrichment.models import DEFAULT_SERVICE_NAMES
 
 
 class DuplicateTradeError(Exception):
@@ -65,16 +67,51 @@ def make_sink(engine) -> Callable[[TradeEvent], None]:
 
     def write_trade(event: TradeEvent) -> None:
         with session_factory() as session:  # type: Session
-            session.add(
-                Trade(
-                    broker_id=event.broker_id,
-                    trade_id=event.trade_id,
-                    symbol=event.symbol,
-                    qty=event.qty,
-                    price=event.price,
-                    timestamp=event.timestamp,
-                )
+            # Read before adding the trade below: session.get() autoflushes
+            # pending changes first by default, which would run the trade
+            # insert ahead of this function's own commit/IntegrityError
+            # handling and let a duplicate-key error escape uncaught.
+            flag = session.get(FeatureFlag, "enrichment_enabled")
+
+            trade = Trade(
+                broker_id=event.broker_id,
+                trade_id=event.trade_id,
+                symbol=event.symbol,
+                qty=event.qty,
+                price=event.price,
+                timestamp=event.timestamp,
             )
+            session.add(trade)
+
+            # Same transaction as the trade insert above — the transactional
+            # outbox pattern (see enrichment/outbox.py): if this commit
+            # succeeds, the pending job is durable even if the process
+            # crashes before the Temporal worker ever starts the workflow.
+            if flag is not None and flag.enabled:
+                # Set explicitly (not left to the mapped "not_requested"
+                # default) — this trade now has an in-flight job.
+                trade.enrichment_status = "pending"
+                session.add(
+                    TradeEnrichmentJob(
+                        workflow_id=compute_workflow_id(
+                            event.broker_id, event.trade_id, event.timestamp
+                        ),
+                        broker_id=event.broker_id,
+                        trade_id=event.trade_id,
+                        trade_timestamp=event.timestamp,
+                        payload={
+                            "broker_id": event.broker_id,
+                            "trade_id": event.trade_id,
+                            "timestamp": event.timestamp.isoformat(),
+                            "symbol": event.symbol,
+                            "qty": event.qty,
+                            "price": str(event.price),
+                            "service_names": DEFAULT_SERVICE_NAMES,
+                        },
+                        status="pending",
+                    )
+                )
+
             try:
                 session.commit()
             except IntegrityError as exc:

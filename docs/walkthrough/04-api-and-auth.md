@@ -113,19 +113,22 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     participant Op as Operator (API or raw SQL)
-    participant DB as feature_flags table
+    participant DB as feature_flags + trades tables
     participant Trades as routes_trades.py
-    participant Enrich as enrichment/hand_rolled.py
 
     Op->>DB: PATCH /admin/feature-flags/enrichment_enabled<br/>OR: UPDATE feature_flags SET enabled=true
     Note over DB: table is the actual source of truth —<br/>both paths are equivalent
 
     Trades->>DB: is_enabled(session, "enrichment_enabled")
     DB-->>Trades: true
-    Trades->>Enrich: enrich(app.state.enrichment_services, app.state.enrichment_breakers)
-    Enrich-->>Trades: {risk_score: ..., sentiment: ...}
-    Trades-->>Op: TradeOut[].enrichment populated
+    Trades->>DB: SELECT trades (incl. enrichment, enrichment_status)
+    DB-->>Trades: rows, already enriched by the Temporal worker
+    Trades-->>Op: TradeOut[].enrichment / enrichment_status as stored
 ```
+
+`enrichment`/`enrichment_status` are no longer computed on this request path at all — see
+[page 5](05-enrichment.md#durable-per-trade-dispatch-the-live-path) for where they actually get set
+(the Temporal worker's outbox dispatcher + persistence activity).
 
 - [`is_enabled` / `set_enabled`](../../trade-pipeline/src/trade_pipeline/common/feature_flags.py#L24) —
   plain async functions reading/writing through the same per-request `AsyncSession` used everywhere
@@ -135,14 +138,11 @@ sequenceDiagram
   `/trades`. Not the only way to flip a flag: a direct `UPDATE feature_flags` against Postgres works
   identically, and is tested explicitly
   ([`test_enrichment_reflects_a_direct_db_row_update`](../../trade-pipeline/tests/api/test_routes_trades.py)).
-- [`_enrichment_for_response`](../../trade-pipeline/src/trade_pipeline/api/routes_trades.py#L15) /
-  [`list_trades`](../../trade-pipeline/src/trade_pipeline/api/routes_trades.py#L31) — when the flag is
-  on, every trade gets an `enrichment` field from the [page 5](05-enrichment.md) hand-rolled fan-out;
-  the field is always present in the response shape, `null` when the flag is off, so a client never
-  has to branch on whether the key exists.
-- `create_app` keeps `enrichment_services`/`enrichment_breakers` on `app.state`, not created fresh per
-  request — a circuit breaker built new every request would be permanently `CLOSED` regardless of
-  upstream failures, defeating the point (see [page 5](05-enrichment.md) for the breaker itself).
+- [`list_trades`](../../trade-pipeline/src/trade_pipeline/api/routes_trades.py) — when the flag is on,
+  every trade's stored `enrichment`/`enrichment_status` columns pass through as-is; when off, the
+  *response* is overridden to `enrichment: null, enrichment_status: "disabled"` without touching the
+  stored row, so re-enabling the flag makes the stored value visible again with no recomputation and
+  no backfill for trades ingested while it was off.
 
 ---
 [Index](README.md) · ← Previous: [Consumer & storage](03-consumer-and-storage.md) · Next → [Enrichment](05-enrichment.md)

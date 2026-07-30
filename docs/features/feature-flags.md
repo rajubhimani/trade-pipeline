@@ -21,9 +21,10 @@ In:
   same JWT auth as `/trades`. Not the *only* way to change a flag: a direct
   `UPDATE feature_flags SET enabled = true WHERE name = ...` against Postgres works identically, since
   the table itself is the source of truth, not the API.
-- Wiring the `enrichment_enabled` flag into `GET /trades`: when on, every returned trade gets an
-  `enrichment` field (null when off) populated by the hand-rolled enrichment fan-out (T-6) against two
-  demo mock services.
+- Wiring `enrichment_enabled` into both the ingestion path (whether a new trade gets a pending
+  enrichment job at all) and `GET /trades` (whether stored results are surfaced or presented as
+  `"disabled"`) — see `docs/features/async-enrichment.md`'s "Durable per-trade enrichment" section
+  for the mechanism; this feature is just what the flag itself gates.
 
 Out:
 - Role-based access control for the admin endpoints — they use the same auth as every other protected
@@ -46,13 +47,10 @@ Out:
 - **Missing row is "not yet toggled," not an error**: `is_enabled` falls back to `DEFAULT_FLAGS` (a
   plain dict) when no row exists — a flag starts disabled until someone explicitly turns it on, either
   through the admin API or a direct DB write.
-- **`enrichment` field always present, `None` when the flag is off**: the response shape doesn't
-  change based on flag state — a client parsing the response doesn't need to branch on whether the key
-  exists, just on whether its value is null.
-- **Enrichment services/breakers live on `app.state`, not created per request**: circuit-breaker
-  failure state needs to persist across requests to mean anything (see `docs/features/async-enrichment.md`)
-  — creating fresh breakers per request would make the circuit breaker permanently `CLOSED` regardless
-  of upstream failures, defeating its purpose.
+- **`enrichment`/`enrichment_status` fields always present, `null`/`"disabled"` when the flag is
+  off**: the response shape doesn't change based on flag state — a client parsing the response
+  doesn't need to branch on whether the key exists, just on whether its value is null/`"disabled"`.
+  (See `docs/features/async-enrichment.md` for why `GET /trades` itself never computes either field.)
 
 ## Python version notes
 

@@ -21,6 +21,6 @@ logger = logging.getLogger(__name__)
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     config = load_config()
-    engine = make_engine(config.postgres.dsn.replace("+asyncpg", "+psycopg"))
+    engine = make_engine(config.postgres.sync_dsn)
     init_schema(engine)
     logger.info("schema + partitions ready")

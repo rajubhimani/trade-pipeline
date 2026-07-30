@@ -6,7 +6,7 @@
 
 **Files**: everything under [`src/trade_pipeline/enrichment/`](../../trade-pipeline/src/trade_pipeline/enrichment/)
 **Feature doc**: [docs/features/async-enrichment.md](../features/async-enrichment.md)
-**Tests**: [`tests/enrichment/`](../../trade-pipeline/tests/enrichment/) (17 tests)
+**Tests**: [`tests/enrichment/`](../../trade-pipeline/tests/enrichment/)
 
 ## What it does
 
@@ -94,6 +94,30 @@ flowchart TD
   graceful-degradation contract as the hand-rolled version, different mechanism.
 - Retries here come from Temporal's own `RetryPolicy` (`non_retryable_error_types`), not `tenacity` —
   a non-retryable failure is raised from the activity as an `ApplicationError(..., non_retryable=True)`.
+
+## Durable per-trade dispatch (the live path)
+
+`GET /trades` doesn't call either fan-out above anymore — it only reads the `enrichment`/
+`enrichment_status` already stored on the trade row. See
+[docs/features/async-enrichment.md](../features/async-enrichment.md#durable-per-trade-enrichment-the-live-path)
+for the full flow/design; this is just the file tour:
+
+- [`ids.py`](../../trade-pipeline/src/trade_pipeline/enrichment/ids.py) — deterministic workflow ID.
+- [`outbox.py`](../../trade-pipeline/src/trade_pipeline/enrichment/outbox.py) — polls
+  `trade_enrichment_jobs`, starts one `EnrichmentWorkflow` per pending row, marks it `dispatched`.
+- [`persistence.py`](../../trade-pipeline/src/trade_pipeline/enrichment/persistence.py) — a
+  class-based activity (same pattern as `RefreshTokenActivities`), called once at the end of
+  `EnrichmentWorkflow.run` whenever it was given a `TradeEnrichmentPayload`.
+- [`services.py`](../../trade-pipeline/src/trade_pipeline/enrichment/services.py) — what
+  `call_enrichment_service` actually calls in this path (real HTTP or deterministic demo handler).
+- [`metrics.py`](../../trade-pipeline/src/trade_pipeline/enrichment/metrics.py) — the Temporal
+  worker's own `/metrics`, same reasoning as `observability/metrics.py` for the consumer.
+- `models.py` holds the dataclasses shared across the above, purely to avoid a circular import.
+
+[`worker.py`](../../trade-pipeline/src/trade_pipeline/enrichment/worker.py) wires all of this
+together: registers the activities above plus `RefreshTokenActivities` with one `Worker`, runs
+`OutboxDispatcher.run()` as a concurrent task alongside it, shuts both down cleanly on
+`SIGINT`/`SIGTERM`.
 
 ## How the Temporal tests actually run
 

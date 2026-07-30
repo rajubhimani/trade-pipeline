@@ -150,7 +150,7 @@ if __name__ == "__main__":
     from trade_pipeline.consumer.postgres_sink import init_schema, make_engine, make_sink
 
     config = load_config()
-    engine = make_engine(config.postgres.dsn.replace("+asyncpg", "+psycopg"))
+    engine = make_engine(config.postgres.sync_dsn)
     init_schema(engine)
 
     metrics.start_metrics_server(port=8001)

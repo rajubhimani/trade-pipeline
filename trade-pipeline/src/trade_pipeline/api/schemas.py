@@ -28,10 +28,13 @@ class TradeOut(BaseModel):
     qty: int
     price: Decimal
     timestamp: datetime
-    # Only populated when the "enrichment_enabled" feature flag is on (see
-    # common/feature_flags.py) — None otherwise, not omitted, so API
-    # consumers see a stable response shape regardless of the flag state.
+    # Read straight from the stored `trades.enrichment`/`enrichment_status`
+    # columns (routes_trades.py never calls Temporal or enrichment services
+    # on the request path) — None/"disabled" when the "enrichment_enabled"
+    # feature flag is off, regardless of what's actually stored, so API
+    # consumers see a stable response shape either way.
     enrichment: dict[str, EnrichmentFieldOut] | None = None
+    enrichment_status: str = "not_requested"
 
     model_config = {"from_attributes": True}
 

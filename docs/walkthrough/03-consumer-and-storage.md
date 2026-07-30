@@ -74,6 +74,12 @@ sequenceDiagram
   unique constraint on `(broker_id, trade_id, timestamp)` is a defense-in-depth backstop behind Redis
   dedup; raised (not silently swallowed) if the two dedup layers ever disagree, since that's worth
   alerting on.
+- **Transactional outbox for enrichment**: `write_trade` also checks the `enrichment_enabled` flag
+  (read *before* the trade insert to sidestep an autoflush ordering issue with `session.get`) in the
+  same DB session as the trade insert. When on, it adds a `trade_enrichment_jobs` row — deterministic
+  workflow ID, the trade's immutable snapshot as JSONB — and commits both together. If the process
+  crashes between this commit and the Temporal worker's next outbox poll, the row is still there;
+  nothing is lost. See [page 5](05-enrichment.md#durable-per-trade-dispatch-the-live-path).
 
 ## Code references — Postgres partitioning
 

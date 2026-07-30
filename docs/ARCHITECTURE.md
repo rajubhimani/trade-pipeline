@@ -19,12 +19,18 @@ plan, kept in `trade-pipeline/`.
 Temporal owns **durable, multi-step workflows with retries/compensation** — not raw event ingestion.
 Applied here to:
 
-- **Enrichment workflow**: replaces the hand-rolled circuit breaker + tenacity retry combo for calling
-  the 3 mock enrichment services with a Temporal Workflow + Activities. Temporal gives retry policies,
-  timeouts, and durable state for free; the hand-rolled version stays in the codebase too as the
-  "how would you build this without a framework" interview answer (see `docs/DECISIONS.md`).
-- **Refresh-token rotation / auth side-effects** (candidate future workflow) — not built yet, tracked
-  in backlog.
+- **Per-trade enrichment workflow (live)**: `GET /trades` never calls Temporal or an enrichment
+  service itself — it only reads whatever was already persisted. The consumer commits a trade and a
+  pending `trade_enrichment_jobs` outbox row in one transaction; the Temporal worker's outbox
+  dispatcher polls that table and starts one deterministic-ID `EnrichmentWorkflow` per trade, which
+  runs the risk-score/sentiment activities concurrently and persists the (possibly partial) result
+  back to the exact trade row. See `docs/features/async-enrichment.md` for the full design. The
+  hand-rolled fan-out (`enrichment/hand_rolled.py`) stays in the codebase as the "how would you build
+  this without a framework" interview answer (see `docs/DECISIONS.md`) but is no longer wired into
+  the live route.
+- **Refresh-token rotation** (`api/auth/refresh_workflow.py`) — a second, deliberately different
+  Temporal pattern (single side-effecting operation, not a fan-out); not wired into the live
+  `/auth/refresh` endpoint, kept as a worked comparison example.
 
 Do NOT use Temporal for the hot-path dedup+write (per-event, sub-5s SLA, extremely high volume) —
 that stays a plain async Kafka consumer. Temporal workflows have per-workflow overhead that doesn't

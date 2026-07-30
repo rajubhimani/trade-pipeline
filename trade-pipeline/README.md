@@ -149,9 +149,14 @@ Login with the demo account (`demo` / `trade-pipeline-demo` — see `api/auth/us
 
 One command brings up the entire system — infra (Kafka, Redis, Postgres) plus the app's own
 `producer`/`consumer`/`api`/`dagster` services, all built from the one [`Dockerfile`](Dockerfile)
-(entrypoint picked per service via `command:` — see [DECISIONS.md](../docs/DECISIONS.md)):
+(entrypoint picked per service via `command:` — see [DECISIONS.md](../docs/DECISIONS.md)). The app
+services share their container-network config (Postgres/Redis/Kafka/Temporal DNS names) via
+`docker-compose.env`, referenced from `docker-compose.yml` via `env_file:` — gitignored like `.env`
+(see [`.env.example`](.env.example), the one tracked template for both), so copy it once first and
+swap each `localhost` for its Compose service name (`postgres`, `redis`, `kafka`, `temporal`):
 
 ```bash
+cp .env.example docker-compose.env   # then edit: localhost -> postgres/redis/kafka/temporal
 make up       # docker compose up -d --build
 make down     # docker compose down -v
 make ps       # docker compose ps
@@ -193,10 +198,14 @@ curl -X PATCH localhost:8000/admin/feature-flags/enrichment_enabled \
 psql -c "UPDATE feature_flags SET enabled = true WHERE name = 'enrichment_enabled';"
 ```
 
-`enrichment_enabled` gates whether `GET /trades` attaches demo enrichment data (see
-[`../docs/features/feature-flags.md`](../docs/features/feature-flags.md) and
-[`../docs/features/async-enrichment.md`](../docs/features/async-enrichment.md)) — the response's
-`enrichment` field is always present, `null` when the flag is off.
+`enrichment_enabled` gates whether newly-ingested trades get a durable per-trade Temporal enrichment
+workflow (transactional outbox in `consumer/postgres_sink.py`, dispatched by the Temporal worker's
+outbox poller) — see [`../docs/features/feature-flags.md`](../docs/features/feature-flags.md) and
+[`../docs/features/async-enrichment.md`](../docs/features/async-enrichment.md) ("Durable per-trade
+enrichment"). `GET /trades` never calls Temporal or an enrichment service itself — it only reads
+`enrichment`/`enrichment_status` already persisted on the trade row; both are present but overridden
+to `null`/`"disabled"` in the response while the flag is off, and become visible again (with no
+backfill for trades ingested while it was off) once re-enabled.
 
 ## Development
 

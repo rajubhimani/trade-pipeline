@@ -73,18 +73,37 @@ async def test_trades_respects_limit(app, client, demo_credentials):
 
 
 async def test_enrichment_is_null_when_flag_disabled(app, client, demo_credentials):
-    await _seed_trade(app, trade_id="t-1")
+    await _seed_trade(
+        app,
+        trade_id="t-1",
+        enrichment={"risk_score": {"data": {"score": 17}, "error": None}},
+        enrichment_status="completed",
+    )
     token = await _login(client, demo_credentials)
 
     resp = await client.get("/trades", headers={"Authorization": f"Bearer {token}"})
 
-    assert resp.json()[0]["enrichment"] is None
+    row = resp.json()[0]
+    assert row["enrichment"] is None
+    assert row["enrichment_status"] == "disabled"
 
 
-async def test_enrichment_is_attached_when_flag_enabled_via_admin_api(
+async def test_enrichment_is_read_from_stored_column_when_flag_enabled_via_admin_api(
     app, client, demo_credentials
 ):
-    await _seed_trade(app, trade_id="t-1")
+    """GET /trades must never call Temporal or an enrichment service itself
+    — it only reads whatever the Temporal worker already persisted (see
+    routes_trades.py's module docstring). Seed the stored result directly
+    rather than exercising the workflow, so this test also proves the
+    endpoint doesn't recompute anything of its own.
+    """
+    stored = {
+        "risk_score": {"data": {"score": 17, "trade_id": "t-1"}, "error": None},
+        "sentiment": {"data": None, "error": "EnrichmentTimeoutError"},
+    }
+    await _seed_trade(
+        app, trade_id="t-1", enrichment=stored, enrichment_status="completed_with_errors"
+    )
     token = await _login(client, demo_credentials)
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -93,10 +112,52 @@ async def test_enrichment_is_attached_when_flag_enabled_via_admin_api(
     )
     resp = await client.get("/trades", headers=headers)
 
-    enrichment = resp.json()[0]["enrichment"]
-    assert enrichment is not None
-    assert enrichment["risk_score"]["data"] == {"score": 42}
-    assert enrichment["sentiment"]["data"] == {"index": "neutral"}
+    row = resp.json()[0]
+    assert row["enrichment"] == stored
+    assert row["enrichment_status"] == "completed_with_errors"
+
+
+async def test_enrichment_differs_per_trade(app, client, demo_credentials):
+    await _seed_trade(
+        app,
+        trade_id="t-1",
+        enrichment={"risk_score": {"data": {"score": 1}, "error": None}},
+        enrichment_status="completed",
+    )
+    await _seed_trade(
+        app,
+        trade_id="t-2",
+        enrichment={"risk_score": {"data": {"score": 2}, "error": None}},
+        enrichment_status="completed",
+    )
+    token = await _login(client, demo_credentials)
+    headers = {"Authorization": f"Bearer {token}"}
+    await client.patch(
+        "/admin/feature-flags/enrichment_enabled", json={"enabled": True}, headers=headers
+    )
+
+    resp = await client.get("/trades", headers=headers)
+    by_trade_id = {row["trade_id"]: row["enrichment"] for row in resp.json()}
+
+    assert by_trade_id["t-1"]["risk_score"]["data"] == {"score": 1}
+    assert by_trade_id["t-2"]["risk_score"]["data"] == {"score": 2}
+
+
+async def test_pending_enrichment_status_returned_without_calling_services(
+    app, client, demo_credentials
+):
+    await _seed_trade(app, trade_id="t-1", enrichment=None, enrichment_status="pending")
+    token = await _login(client, demo_credentials)
+    headers = {"Authorization": f"Bearer {token}"}
+    await client.patch(
+        "/admin/feature-flags/enrichment_enabled", json={"enabled": True}, headers=headers
+    )
+
+    resp = await client.get("/trades", headers=headers)
+
+    row = resp.json()[0]
+    assert row["enrichment"] is None
+    assert row["enrichment_status"] == "pending"
 
 
 async def test_enrichment_reflects_a_direct_db_row_update(app, client, demo_credentials):
@@ -104,7 +165,12 @@ async def test_enrichment_reflects_a_direct_db_row_update(app, client, demo_cred
     with a direct DB write (no admin API call) must take effect on the very
     next request, same as it would for an operator running raw SQL.
     """
-    await _seed_trade(app, trade_id="t-1")
+    await _seed_trade(
+        app,
+        trade_id="t-1",
+        enrichment={"risk_score": {"data": {"score": 5}, "error": None}},
+        enrichment_status="completed",
+    )
     token = await _login(client, demo_credentials)
     headers = {"Authorization": f"Bearer {token}"}
 
