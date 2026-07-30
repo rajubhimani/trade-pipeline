@@ -3,7 +3,7 @@ free-threaded 3.14t build (PEP 703).
 
 Not part of the trade-pipeline application — a standalone learning script
 for the plan's Week 3 CPython-internals study (see
-../../faang_python_full_prep.html and docs/features/free-threaded-benchmark.md
+../../python_full_prep.html and docs/features/free-threaded-benchmark.md
 for real measured results). Run the identical script under both
 interpreters to see the GIL's effect on CPU-bound multithreading directly:
 

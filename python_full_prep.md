@@ -1,4 +1,4 @@
-# FAANG Python Senior — Full 8-Week Prep Plan
+# Python Senior — Full 8-Week Prep Plan
 
 Diagnostic score: 10/30 (33%) · 2 hours/day · Python 3.11 → 3.14 coverage · DSA + Project parallel tracks
 
@@ -95,7 +95,7 @@ Diagnostic score: 10/30 (33%) · 2 hours/day · Python 3.11 → 3.14 coverage ·
 
 **Badge:** DSA
 
-> **Why first** — FAANG DSA screens come before Python depth. You failed the streaming median question (said binary tree — answer is two heaps). That ends a phone screen. Fix this before anything else.
+> **Why first** — Senior DSA screens come before Python depth. You failed the streaming median question (said binary tree — answer is two heaps). That ends a phone screen. Fix this before anything else.
 
 ### Pattern order — do exactly this sequence
 
@@ -612,7 +612,7 @@ Exactly what you were asked in Q5 — but built. Every component maps to a weak 
 
 ## Three things to fix first
 
-> **Biggest risk** — DSA. FAANG screens on it before Python depth. Weak DSA ends the process early — regardless of everything else. Start Week 1 here.
+> **Biggest risk** — DSA. Senior screens on it before Python depth. Weak DSA ends the process early — regardless of everything else. Start Week 1 here.
 
 > **Thinking pattern to break** — You name the tool before drawing the flow. In system design: clarify → draw data flow → name components → justify each. Never lead with "I'd use Kafka."
 
@@ -620,4 +620,4 @@ Exactly what you were asked in Q5 — but built. Every component maps to a weak 
 
 ---
 
-_FAANG Python Senior Prep · Python 3.11–3.14 · 8 weeks · 2hr/day · April 2026_
+_Python Senior Prep · Python 3.11–3.14 · 8 weeks · 2hr/day · April 2026_

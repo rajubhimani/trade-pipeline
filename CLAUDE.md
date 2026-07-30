@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository overview
 
-This repository contains a single self-contained Markdown file: `faang_python_full_prep.md`. It is a personal 8-week FAANG Python (senior) interview prep plan/tracker — not an application with source code, dependencies, or a build system.
+This repository contains a single self-contained Markdown file: `python_full_prep.md`. It is a personal 8-week Python (senior) interview prep plan/tracker — not an application with source code, dependencies, or a build system.
 
-There is no build, lint, or test tooling. There is no package manager, no server, no framework. To view the page, open `faang_python_full_prep.md` in any Markdown viewer/editor (or GitHub's own renderer).
+There is no build, lint, or test tooling. There is no package manager, no server, no framework. To view the page, open `python_full_prep.md` in any Markdown viewer/editor (or GitHub's own renderer).
 
 ## Structure of the Markdown file
 
