@@ -25,8 +25,15 @@ jobs:
         python-version: ["3.11", "3.12", "3.13", "3.14"]
     # Real Postgres + Redis, matching docker-compose.yml's versions — the
     # test suite talks to real services (tests/conftest.py), not
-    # SQLite/fakeredis substitutes. GitHub Actions service containers expose
-    # ports to the runner's localhost automatically.
+    # SQLite/fakeredis substitutes. Unlike GitHub-hosted runners (job runs
+    # directly on the VM, so services: land on localhost), Forgejo's runner
+    # executes the job inside its own container on a per-job docker network
+    # -- services are reachable by container name, not localhost, hence the
+    # TEST_*_DSN/URL overrides below (tests/conftest.py already supports them).
+    env:
+      TEST_POSTGRES_DSN: postgresql+psycopg://trade_pipeline:trade_pipeline@postgres:5432/trade_pipeline
+      TEST_POSTGRES_ASYNC_DSN: postgresql+asyncpg://trade_pipeline:trade_pipeline@postgres:5432/trade_pipeline
+      TEST_REDIS_URL: redis://redis:6379
     services:
       postgres:
         image: postgres:18.4-alpine
