@@ -1,3 +1,6 @@
+# Job containers get the host docker.sock bind-mounted via the runner's
+# own config.yaml (container.options), not anything set here -- see
+# docs/services/forgejo.md.
 name: CD
 
 "on":
