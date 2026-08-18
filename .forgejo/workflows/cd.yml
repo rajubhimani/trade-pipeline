@@ -48,25 +48,35 @@ jobs:
             fi
           else
             CHANNEL=dev
-            # Epoch seconds, not github.run_number: run_number is per *run*,
-            # not per *attempt* -- retrying a failed run keeps the same
-            # number and re-publishing that exact version 409s (already hit
-            # this once). A timestamp always increases, retry or not.
-            VERSION="${BASE}.dev$(date +%s)"
+            VERSION="${BASE}.dev${{ github.run_number }}"
             sed -i "s/^version = \".*\"/version = \"$VERSION\"/" pyproject.toml
           fi
           echo "CHANNEL=$CHANNEL" >> "$GITHUB_ENV"
           echo "PKG_VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "Publishing $CHANNEL version $VERSION"
 
+      # The Dockerfile's `uv sync --locked` fails if uv.lock's recorded
+      # project version doesn't match pyproject.toml -- re-lock after the
+      # dev-channel version bump above so the image build stays in sync.
+      # A no-op for prod (pyproject.toml wasn't touched) but cheap either way.
+      - name: Re-lock
+        run: uv lock
+
       - name: Build package
         run: uv build
 
+      # --check-url makes this idempotent: a retried run reuses the same
+      # run_number/version, and uv skips files the index already has instead
+      # of erroring on them -- so re-running a partially-failed job (e.g. the
+      # image push failed after the package already uploaded) just works.
       - name: Publish package
         env:
           UV_PUBLISH_USERNAME: ${{ github.repository_owner }}
           UV_PUBLISH_PASSWORD: ${{ secrets.CD_DEPLOY_TOKEN }}
-        run: uv publish --publish-url "${{ github.server_url }}/api/packages/${{ github.repository_owner }}/pypi"
+        run: |
+          uv publish \
+            --publish-url "${{ github.server_url }}/api/packages/${{ github.repository_owner }}/pypi" \
+            --check-url "${{ github.server_url }}/api/packages/${{ github.repository_owner }}/pypi/simple/"
 
       - name: Log in to the container registry
         run: |
