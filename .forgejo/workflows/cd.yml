@@ -48,11 +48,12 @@ jobs:
             fi
           else
             CHANNEL=dev
-            # run_number alone repeats across retries of the same run;
-            # run_attempt increments per retry -- fold both into one short,
-            # still-readable devN that goes up on every try, not just every push.
-            DEVNUM=$(( ${{ github.run_number }} * 100 + ${{ github.run_attempt }} ))
-            VERSION="${BASE}.dev${DEVNUM}"
+            # A new commit gets a new number (1, 2, 3, ...). A retry of the
+            # *same* commit reuses the same number on purpose -- same code
+            # should mean same artifact, so --check-url below just skips the
+            # re-publish instead of erroring, rather than minting a pointless
+            # new version for content that didn't change.
+            VERSION="${BASE}.dev${{ github.run_number }}"
             sed -i "s/^version = \".*\"/version = \"$VERSION\"/" pyproject.toml
           fi
           echo "CHANNEL=$CHANNEL" >> "$GITHUB_ENV"
