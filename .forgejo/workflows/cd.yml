@@ -2,7 +2,8 @@ name: CD
 
 "on":
   push:
-    branches: [main, develop]
+    branches: [develop]
+    tags: ["v*.*.*"]
 
 defaults:
   run:
@@ -22,21 +23,24 @@ jobs:
         with:
           python-version: "3.13"
 
-      # develop -> dev channel: auto-versioned, never collides, never `latest`.
-      # main -> prod channel: exact pyproject.toml version, published as-is.
-      # Publishing the same prod version twice is a mistake (silently
-      # overwriting a release someone may already be running), not something
-      # to auto-resolve -- fail loudly and require a deliberate version bump.
+      # A pushed v* tag is a deliberate release: the tag *is* the version,
+      # nothing auto-bumps it. A plain push to develop is a continuous dev
+      # build: auto-versioned, never collides, never gets `latest`.
       - name: Determine channel and version
         run: |
           BASE=$(grep -m1 '^version = ' pyproject.toml | sed -E 's/version = "(.*)"/\1/')
-          if [ "${{ github.ref_name }}" = "main" ]; then
+          if [ "${{ github.ref_type }}" = "tag" ]; then
             CHANNEL=prod
-            VERSION="$BASE"
+            VERSION="${{ github.ref_name }}"
+            VERSION="${VERSION#v}"
+            if [ "$VERSION" != "$BASE" ]; then
+              echo "::error::Tag v$VERSION doesn't match pyproject.toml's version ($BASE) -- bump pyproject.toml to $VERSION and re-tag, or fix the tag."
+              exit 1
+            fi
             STATUS=$(curl -sk -o /dev/null -w "%{http_code}" \
               "${{ github.server_url }}/api/v1/packages/${{ github.repository_owner }}/pypi/trade-pipeline/$VERSION")
             if [ "$STATUS" = "200" ]; then
-              echo "::error::trade-pipeline $VERSION is already published to the prod registry -- bump the version in pyproject.toml before merging to main."
+              echo "::error::trade-pipeline $VERSION is already published -- this tag was reused after a release. Bump pyproject.toml and push a new tag instead."
               exit 1
             fi
           else
@@ -63,9 +67,9 @@ jobs:
           echo "REGISTRY=$REGISTRY" >> "$GITHUB_ENV"
           echo "${{ secrets.CD_DEPLOY_TOKEN }}" | docker login "$REGISTRY" -u "${{ github.repository_owner }}" --password-stdin
 
-      # `latest` only ever points at a real prod build -- a dev image never
-      # gets that tag, so nothing pulling `latest` can accidentally land on
-      # an unreleased build.
+      # `latest` only ever points at a real tagged release -- a dev image
+      # never gets that tag, so nothing pulling `latest` can land on an
+      # unreleased build.
       - name: Build and push image
         run: |
           IMAGE="$REGISTRY/${{ github.repository }}"
@@ -78,3 +82,18 @@ jobs:
             docker push "$IMAGE:dev"
             docker push "$IMAGE:dev-${{ github.run_number }}"
           fi
+
+      # The actual "what build happened" record: a Forgejo Release tying the
+      # tag to the exact package + image coordinates it produced.
+      - name: Create Forgejo release
+        if: env.CHANNEL == 'prod'
+        run: |
+          BODY=$(cat <<EOF
+          Package: \`trade-pipeline==${PKG_VERSION}\` on this repo's PyPI registry
+          Image: \`${REGISTRY}/${{ github.repository }}:${PKG_VERSION}\` (also tagged \`latest\`)
+          EOF
+          )
+          curl -sk -X POST "${{ github.server_url }}/api/v1/repos/${{ github.repository }}/releases" \
+            -H "Authorization: token ${{ secrets.CD_DEPLOY_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d "$(python3 -c 'import json,sys; print(json.dumps({"tag_name": sys.argv[1], "name": sys.argv[1], "body": sys.argv[2]}))' "${{ github.ref_name }}" "$BODY")"
