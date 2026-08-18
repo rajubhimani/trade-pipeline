@@ -13,10 +13,9 @@ defaults:
 jobs:
   check:
     # This mirror only picks up .forgejo/workflows/ -- Forgejo Actions doesn't
-    # read .github/workflows/, so this is a separate copy of that CI job aimed
-    # at the "docker" label our self-hosted runner actually registers (see
-    # docs/services/forgejo.md); ubuntu-latest has no matching runner here.
-    runs-on: docker
+    # read .github/workflows/, so this is a separate copy of that CI job (see
+    # docs/services/forgejo.md for the self-hosted runner setup).
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
