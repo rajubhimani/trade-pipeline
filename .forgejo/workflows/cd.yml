@@ -48,7 +48,11 @@ jobs:
             fi
           else
             CHANNEL=dev
-            VERSION="${BASE}.dev${{ github.run_number }}"
+            # run_number alone repeats across retries of the same run;
+            # run_attempt increments per retry -- fold both into one short,
+            # still-readable devN that goes up on every try, not just every push.
+            DEVNUM=$(( ${{ github.run_number }} * 100 + ${{ github.run_attempt }} ))
+            VERSION="${BASE}.dev${DEVNUM}"
             sed -i "s/^version = \".*\"/version = \"$VERSION\"/" pyproject.toml
           fi
           echo "CHANNEL=$CHANNEL" >> "$GITHUB_ENV"
