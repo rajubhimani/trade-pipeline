@@ -172,6 +172,15 @@ jobs:
         run: |
           BASE=$(grep -m1 '^version = ' pyproject.toml | sed -E 's/version = "(.*)"/\1/')
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            # workflow_dispatch lets the caller pick *any* ref to run against --
+            # without this, dispatching against develop would cut a "prod"
+            # release straight from the working branch, bypassing main (and
+            # whatever review/merge discipline main is supposed to represent)
+            # entirely.
+            if [ "${{ github.ref }}" != "refs/heads/main" ]; then
+              echo "::error::Prod releases must be dispatched from main (got ${{ github.ref_name }}) -- merge develop into main first, then dispatch from main."
+              exit 1
+            fi
             CHANNEL=prod
             VERSION="${{ inputs.version }}"
             if [ "$VERSION" != "$BASE" ]; then
