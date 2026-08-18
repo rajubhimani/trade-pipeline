@@ -1,0 +1,80 @@
+name: CD
+
+"on":
+  push:
+    branches: [main, develop]
+
+defaults:
+  run:
+    working-directory: trade-pipeline
+
+jobs:
+  publish:
+    # Self-hosted registry (Forgejo's built-in PyPI index + container registry,
+    # see docs/services/forgejo.md) -- everything lands on our own disk, no
+    # third-party account, no quota.
+    runs-on: docker
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v9.0.0
+        with:
+          python-version: "3.13"
+
+      # develop -> dev channel: auto-versioned, never collides, never `latest`.
+      # main -> prod channel: exact pyproject.toml version, published as-is.
+      # Publishing the same prod version twice is a mistake (silently
+      # overwriting a release someone may already be running), not something
+      # to auto-resolve -- fail loudly and require a deliberate version bump.
+      - name: Determine channel and version
+        run: |
+          BASE=$(grep -m1 '^version = ' pyproject.toml | sed -E 's/version = "(.*)"/\1/')
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            CHANNEL=prod
+            VERSION="$BASE"
+            STATUS=$(curl -sk -o /dev/null -w "%{http_code}" \
+              "${{ github.server_url }}/api/v1/packages/${{ github.repository_owner }}/pypi/trade-pipeline/$VERSION")
+            if [ "$STATUS" = "200" ]; then
+              echo "::error::trade-pipeline $VERSION is already published to the prod registry -- bump the version in pyproject.toml before merging to main."
+              exit 1
+            fi
+          else
+            CHANNEL=dev
+            VERSION="${BASE}.dev${{ github.run_number }}"
+            sed -i "s/^version = \".*\"/version = \"$VERSION\"/" pyproject.toml
+          fi
+          echo "CHANNEL=$CHANNEL" >> "$GITHUB_ENV"
+          echo "PKG_VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "Publishing $CHANNEL version $VERSION"
+
+      - name: Build package
+        run: uv build
+
+      - name: Publish package
+        env:
+          UV_PUBLISH_USERNAME: ${{ github.repository_owner }}
+          UV_PUBLISH_PASSWORD: ${{ secrets.CD_DEPLOY_TOKEN }}
+        run: uv publish --publish-url "${{ github.server_url }}/api/packages/${{ github.repository_owner }}/pypi"
+
+      - name: Log in to the container registry
+        run: |
+          REGISTRY=$(echo "${{ github.server_url }}" | sed -E 's#^https?://##')
+          echo "REGISTRY=$REGISTRY" >> "$GITHUB_ENV"
+          echo "${{ secrets.CD_DEPLOY_TOKEN }}" | docker login "$REGISTRY" -u "${{ github.repository_owner }}" --password-stdin
+
+      # `latest` only ever points at a real prod build -- a dev image never
+      # gets that tag, so nothing pulling `latest` can accidentally land on
+      # an unreleased build.
+      - name: Build and push image
+        run: |
+          IMAGE="$REGISTRY/${{ github.repository }}"
+          if [ "$CHANNEL" = "prod" ]; then
+            docker build -t "$IMAGE:$PKG_VERSION" -t "$IMAGE:latest" .
+            docker push "$IMAGE:$PKG_VERSION"
+            docker push "$IMAGE:latest"
+          else
+            docker build -t "$IMAGE:dev" -t "$IMAGE:dev-${{ github.run_number }}" .
+            docker push "$IMAGE:dev"
+            docker push "$IMAGE:dev-${{ github.run_number }}"
+          fi
