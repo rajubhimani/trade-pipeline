@@ -3,9 +3,24 @@ name: CI
 "on":
   push:
     branches: [main, develop]
-    tags: ["v*.*.*"]
   pull_request:
     branches: [main, develop]
+  # Prod releases are manually dispatched, not triggered by pushing a v* tag.
+  # Reacting to an already-pushed tag means the tag (and its commit) always
+  # pre-date the release-creation API call -- Forgejo backdates the release's
+  # timestamp to that commit's own date rather than "now" in that case (a
+  # known Gitea/Forgejo rough edge: go-gitea/gitea#13004, #21681). Creating
+  # the tag *from* this job instead (like the dev channel already does via
+  # target_commitish) avoids a pre-existing tag entirely, so there's nothing
+  # to backdate against -- matches how established release tooling (e.g.
+  # JReleaser) does it: the release job owns tag creation, it doesn't react
+  # to one.
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release -- must match pyproject.toml exactly, e.g. 0.1.2"
+        required: true
+        type: string
 
 defaults:
   run:
@@ -82,13 +97,13 @@ jobs:
   # dependency inside one workflow, not a separate workflow_run-triggered
   # file, since job-level `needs:` is guaranteed to work here whereas
   # cross-workflow triggers are a less certain bet on this Forgejo version.
-  # Gated to develop pushes (dev channel) and v* tags (prod channel) only --
-  # not pull_request, not a plain push to main.
+  # Gated to develop pushes (dev channel) and manual dispatch (prod channel)
+  # only -- not pull_request, not a plain push to main.
   publish:
     needs: check
     if: >-
-      github.event_name == 'push' &&
-      (github.ref == 'refs/heads/develop' || github.ref_type == 'tag')
+      (github.event_name == 'push' && github.ref == 'refs/heads/develop') ||
+      github.event_name == 'workflow_dispatch'
     # Job containers get the host docker.sock automounted via the runner's
     # own config.yaml (container.docker_host: automount), not anything set
     # here -- see docs/services/forgejo.md.
@@ -104,24 +119,24 @@ jobs:
         with:
           python-version: "3.13"
 
-      # A pushed v* tag is a deliberate release: the tag *is* the version,
-      # nothing auto-bumps it. A plain push to develop is a continuous dev
-      # build: auto-versioned, never collides, never gets `latest`.
+      # A manual dispatch is a deliberate release: the input version *is* the
+      # version, nothing auto-bumps it. A plain push to develop is a
+      # continuous dev build: auto-versioned, never collides, never gets
+      # `latest`.
       - name: Determine channel and version
         run: |
           BASE=$(grep -m1 '^version = ' pyproject.toml | sed -E 's/version = "(.*)"/\1/')
-          if [ "${{ github.ref_type }}" = "tag" ]; then
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             CHANNEL=prod
-            VERSION="${{ github.ref_name }}"
-            VERSION="${VERSION#v}"
+            VERSION="${{ inputs.version }}"
             if [ "$VERSION" != "$BASE" ]; then
-              echo "::error::Tag v$VERSION doesn't match pyproject.toml's version ($BASE) -- bump pyproject.toml to $VERSION and re-tag, or fix the tag."
+              echo "::error::Requested version $VERSION doesn't match pyproject.toml's version ($BASE) -- bump pyproject.toml to $VERSION first, or dispatch with the right version."
               exit 1
             fi
             STATUS=$(curl -sk -o /dev/null -w "%{http_code}" \
               "${{ github.server_url }}/api/v1/packages/${{ github.repository_owner }}/pypi/trade-pipeline/$VERSION")
             if [ "$STATUS" = "200" ]; then
-              echo "::error::trade-pipeline $VERSION is already published -- this tag was reused after a release. Bump pyproject.toml and push a new tag instead."
+              echo "::error::trade-pipeline $VERSION is already published -- bump pyproject.toml to a new version before releasing again."
               exit 1
             fi
           else
@@ -187,12 +202,13 @@ jobs:
       # tag to the exact package + image coordinates it produced -- for both
       # channels, so dev builds show up in Releases too, not just tagged ones.
       #
-      # Dev releases are tagged `dev-<version>` (no `v` prefix) rather than
-      # `v<version>` -- the Releases API auto-creates the tag it references
-      # (target_commitish) when it doesn't exist yet, and a `v0.1.0.dev42`
-      # tag would match this workflow's own `tags: ["v*.*.*"]` trigger,
-      # re-firing it recursively down the (wrong) prod path. `dev-...` never
-      # matches that pattern, so there's nothing to guard against.
+      # Both channels create their tag *here*, via target_commitish, rather
+      # than reacting to a tag pushed beforehand -- see the workflow_dispatch
+      # comment up top for why (avoids Forgejo backdating the release to the
+      # tag's commit date instead of "now").
+      #
+      # Dev releases are tagged `dev-<version>` (no `v` prefix), distinct
+      # from prod's `v<version>`, so the two can never collide.
       - name: Create Forgejo release
         run: |
           BODY=$(cat <<EOF
@@ -201,12 +217,13 @@ jobs:
           EOF
           )
           if [ "$CHANNEL" = "prod" ]; then
-            TAG="${{ github.ref_name }}"
-            PAYLOAD=$(python3 -c 'import json,sys; print(json.dumps({"tag_name": sys.argv[1], "name": sys.argv[1], "body": sys.argv[2], "prerelease": False}))' "$TAG" "$BODY")
+            TAG="v${PKG_VERSION}"
+            PRERELEASE=False
           else
             TAG="dev-${PKG_VERSION}"
-            PAYLOAD=$(python3 -c 'import json,sys; print(json.dumps({"tag_name": sys.argv[1], "target_commitish": sys.argv[2], "name": sys.argv[1], "body": sys.argv[3], "prerelease": True}))' "$TAG" "${{ github.sha }}" "$BODY")
+            PRERELEASE=True
           fi
+          PAYLOAD=$(python3 -c 'import json,sys; print(json.dumps({"tag_name": sys.argv[1], "target_commitish": sys.argv[2], "name": sys.argv[1], "body": sys.argv[3], "prerelease": sys.argv[4] == "True"}))' "$TAG" "${{ github.sha }}" "$BODY" "$PRERELEASE")
           # Same idempotency principle as the package publish above: a retry
           # reuses the same PKG_VERSION/TAG, so skip instead of erroring on
           # the resulting 409 rather than failing a run that's actually fine.
