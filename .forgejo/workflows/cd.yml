@@ -1,6 +1,6 @@
-# Job containers get the host docker.sock bind-mounted via the runner's
-# own config.yaml (container.options), not anything set here -- see
-# docs/services/forgejo.md.
+# Job containers get the host docker.sock automounted via the runner's own
+# config.yaml (container.docker_host: automount), not anything set here --
+# see docs/services/forgejo.md.
 name: CD
 
 "on":
@@ -48,7 +48,11 @@ jobs:
             fi
           else
             CHANNEL=dev
-            VERSION="${BASE}.dev${{ github.run_number }}"
+            # Epoch seconds, not github.run_number: run_number is per *run*,
+            # not per *attempt* -- retrying a failed run keeps the same
+            # number and re-publishing that exact version 409s (already hit
+            # this once). A timestamp always increases, retry or not.
+            VERSION="${BASE}.dev$(date +%s)"
             sed -i "s/^version = \".*\"/version = \"$VERSION\"/" pyproject.toml
           fi
           echo "CHANNEL=$CHANNEL" >> "$GITHUB_ENV"
@@ -81,9 +85,9 @@ jobs:
             docker push "$IMAGE:$PKG_VERSION"
             docker push "$IMAGE:latest"
           else
-            docker build -t "$IMAGE:dev" -t "$IMAGE:dev-${{ github.run_number }}" .
+            docker build -t "$IMAGE:dev" -t "$IMAGE:dev-$PKG_VERSION" .
             docker push "$IMAGE:dev"
-            docker push "$IMAGE:dev-${{ github.run_number }}"
+            docker push "$IMAGE:dev-$PKG_VERSION"
           fi
 
       # The actual "what build happened" record: a Forgejo Release tying the
