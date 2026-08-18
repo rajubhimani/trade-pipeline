@@ -27,7 +27,40 @@ defaults:
     working-directory: trade-pipeline
 
 jobs:
+  # Forgejo triggers a fresh workflow run per ref-event, with no built-in
+  # dedup across events that happen to point at the same commit (e.g. a
+  # manual workflow_dispatch run against a commit whose own push-triggered
+  # check just ran, or minutes/weeks later). Re-testing an identical commit
+  # is pure wasted compute on this self-hosted runner -- this job checks
+  # Forgejo's own commit-status API for an already-successful `check` on
+  # this exact SHA and skips the matrix if one exists. `publish` still only
+  # proceeds once a successful check exists for this SHA (fresh or reused),
+  # so this saves compute without weakening the safety gate.
+  gate:
+    runs-on: docker
+    # Overrides the workflow-level working-directory: trade-pipeline -- this
+    # job never checks out the repo, so that directory wouldn't exist.
+    defaults:
+      run:
+        working-directory: .
+    outputs:
+      already_passed: ${{ steps.probe.outputs.already_passed }}
+    steps:
+      - id: probe
+        run: |
+          COUNT=$(curl -sk "${{ github.server_url }}/api/v1/repos/${{ github.repository }}/commits/${{ github.sha }}/status" \
+            -H "Authorization: token ${{ secrets.CD_DEPLOY_TOKEN }}" | \
+            python3 -c "import json,sys; d=json.load(sys.stdin); print(len({s['context'] for s in d.get('statuses',[]) if s['context'].startswith('CI / check (') and s['status']=='success'}))")
+          if [ "$COUNT" -ge 4 ]; then
+            echo "already_passed=true" >> "$GITHUB_OUTPUT"
+            echo "Commit ${{ github.sha }} already has a passing check ($COUNT/4) -- skipping the matrix."
+          else
+            echo "already_passed=false" >> "$GITHUB_OUTPUT"
+          fi
+
   check:
+    needs: gate
+    if: needs.gate.outputs.already_passed != 'true'
     # This mirror only picks up .forgejo/workflows/ -- Forgejo Actions doesn't
     # read .github/workflows/, so this is a separate copy of that CI job (see
     # docs/services/forgejo.md for the self-hosted runner setup).
@@ -93,17 +126,24 @@ jobs:
       - name: Dependency audit (pip-audit)
         run: uv run pip-audit
 
-  # Only runs after `check` succeeds across the whole matrix -- a `needs:`
-  # dependency inside one workflow, not a separate workflow_run-triggered
-  # file, since job-level `needs:` is guaranteed to work here whereas
-  # cross-workflow triggers are a less certain bet on this Forgejo version.
+  # Only runs after `check` succeeds (or is legitimately skipped because this
+  # exact commit already passed) -- a `needs:` dependency inside one
+  # workflow, not a separate workflow_run-triggered file, since job-level
+  # `needs:` is guaranteed to work here whereas cross-workflow triggers are a
+  # less certain bet on this Forgejo version. `check` being skipped would
+  # normally skip this too (Actions propagates skips through `needs`
+  # automatically); always() plus the explicit result check below overrides
+  # that so a *legitimately skipped* check doesn't block publishing, while a
+  # *failed or cancelled* one still does.
   # Gated to develop pushes (dev channel) and manual dispatch (prod channel)
   # only -- not pull_request, not a plain push to main.
   publish:
-    needs: check
+    needs: [gate, check]
     if: >-
-      (github.event_name == 'push' && github.ref == 'refs/heads/develop') ||
-      github.event_name == 'workflow_dispatch'
+      always() &&
+      needs.check.result != 'failure' && needs.check.result != 'cancelled' &&
+      ((github.event_name == 'push' && github.ref == 'refs/heads/develop') ||
+       github.event_name == 'workflow_dispatch')
     # Job containers get the host docker.sock automounted via the runner's
     # own config.yaml (container.docker_host: automount), not anything set
     # here -- see docs/services/forgejo.md.
