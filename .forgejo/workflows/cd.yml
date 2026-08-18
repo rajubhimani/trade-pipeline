@@ -105,17 +105,41 @@ jobs:
             docker push "$IMAGE:dev-$PKG_VERSION"
           fi
 
-      # The actual "what build happened" record: a Forgejo Release tying the
-      # tag to the exact package + image coordinates it produced.
+      # The actual "what build happened" record: a Forgejo Release tying a
+      # tag to the exact package + image coordinates it produced -- for both
+      # channels, so dev builds show up in Releases too, not just tagged ones.
+      #
+      # Dev releases are tagged `dev-<version>` (no `v` prefix) rather than
+      # `v<version>` -- the Releases API auto-creates the tag it references
+      # (target_commitish) when it doesn't exist yet, and a `v0.1.0.dev42`
+      # tag would match this workflow's own `tags: ["v*.*.*"]` trigger,
+      # re-firing it recursively down the (wrong) prod path. `dev-...` never
+      # matches that pattern, so there's nothing to guard against.
       - name: Create Forgejo release
-        if: env.CHANNEL == 'prod'
         run: |
           BODY=$(cat <<EOF
           Package: \`trade-pipeline==${PKG_VERSION}\` on this repo's PyPI registry
-          Image: \`${REGISTRY}/${{ github.repository }}:${PKG_VERSION}\` (also tagged \`latest\`)
+          Image: \`${REGISTRY}/${{ github.repository }}:${PKG_VERSION}\`$( [ "$CHANNEL" = "prod" ] && echo ' (also tagged `latest`)' || echo ' (also tagged `dev`)' )
           EOF
           )
-          curl -sk -X POST "${{ github.server_url }}/api/v1/repos/${{ github.repository }}/releases" \
+          if [ "$CHANNEL" = "prod" ]; then
+            TAG="${{ github.ref_name }}"
+            PAYLOAD=$(python3 -c 'import json,sys; print(json.dumps({"tag_name": sys.argv[1], "name": sys.argv[1], "body": sys.argv[2], "prerelease": False}))' "$TAG" "$BODY")
+          else
+            TAG="dev-${PKG_VERSION}"
+            PAYLOAD=$(python3 -c 'import json,sys; print(json.dumps({"tag_name": sys.argv[1], "target_commitish": sys.argv[2], "name": sys.argv[1], "body": sys.argv[3], "prerelease": True}))' "$TAG" "${{ github.sha }}" "$BODY")
+          fi
+          # Same idempotency principle as the package publish above: a retry
+          # reuses the same PKG_VERSION/TAG, so skip instead of erroring on
+          # the resulting 409 rather than failing a run that's actually fine.
+          EXISTING=$(curl -sk -o /dev/null -w "%{http_code}" \
             -H "Authorization: token ${{ secrets.CD_DEPLOY_TOKEN }}" \
-            -H "Content-Type: application/json" \
-            -d "$(python3 -c 'import json,sys; print(json.dumps({"tag_name": sys.argv[1], "name": sys.argv[1], "body": sys.argv[2]}))' "${{ github.ref_name }}" "$BODY")"
+            "${{ github.server_url }}/api/v1/repos/${{ github.repository }}/releases/tags/$TAG")
+          if [ "$EXISTING" = "200" ]; then
+            echo "Release $TAG already exists, skipping."
+          else
+            curl -sk -X POST "${{ github.server_url }}/api/v1/repos/${{ github.repository }}/releases" \
+              -H "Authorization: token ${{ secrets.CD_DEPLOY_TOKEN }}" \
+              -H "Content-Type: application/json" \
+              -d "$PAYLOAD"
+          fi
