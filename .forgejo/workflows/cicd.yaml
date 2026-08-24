@@ -150,20 +150,10 @@ jobs:
       ((github.event_name == 'push' && github.ref == 'refs/heads/develop') ||
        github.event_name == 'workflow_dispatch')
     # Job containers talk to forgejo's isolated Docker-in-Docker sidecar
-    # (forgejo-docker) over TCP, not this host's real Docker -- set in the
-    # runner's own config.yaml (container.docker_host: tcp://forgejo-docker:2375),
+    # (forgejo-docker) over TCP -- DOCKER_HOST is injected into every job
+    # container instance-wide via the runner's own config.yaml (runner.envs),
     # not anything set here. See docs/services/forgejo.md in the homeserver
     # repo for the full isolation rationale.
-    #
-    # Unlike container.docker_host: automount (which bind-mounts a real
-    # /var/run/docker.sock into the job container automatically), a tcp://
-    # docker_host is NOT auto-wired into job containers by forgejo-runner --
-    # its own generated config comments confirm the auto-mount behavior is
-    # documented only for unix:// socket URLs. So DOCKER_HOST has to be set
-    # explicitly here, or `docker` in every step below defaults to the
-    # nonexistent local socket and fails with "no such file or directory".
-    env:
-      DOCKER_HOST: tcp://forgejo-docker:2375
     # Self-hosted registry (Forgejo's built-in PyPI index + container
     # registry, see docs/services/forgejo.md) -- everything lands on our own
     # disk, no third-party account, no quota.
