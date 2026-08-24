@@ -1,6 +1,6 @@
 [project]
 name = "trade-pipeline"
-version = "0.1.4"
+version = "0.1.5"
 description = "Real-time trade event pipeline with secure query API — Python prep project"
 readme = "README.md"
 authors = [
