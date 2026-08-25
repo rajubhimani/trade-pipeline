@@ -149,24 +149,12 @@ jobs:
       needs.check.result != 'failure' && needs.check.result != 'cancelled' &&
       ((github.event_name == 'push' && github.ref == 'refs/heads/develop') ||
        github.event_name == 'workflow_dispatch')
-    # This job's own container is created via forgejo's isolated
-    # Docker-in-Docker sidecar (forgejo-docker) -- but that sidecar can't
-    # itself be reached from inside this job container for `docker
-    # build`/`push` (confirmed live: DOCKER_HOST pointed at it directly
-    # fails with "no such host" -- it's a separate nested Docker engine,
-    # unrelated to whatever network this job's container ends up on). The
-    # standard fix, same mechanism as the `postgres`/`redis` services in the
-    # `check` job below: a per-job `docker` service, reachable by its alias
-    # on this job's own network. See docs/services/forgejo.md in the
-    # homeserver repo for the full explanation.
-    services:
-      docker:
-        image: docker:28-dind
-        options: --privileged
-        env:
-          DOCKER_TLS_CERTDIR: ""
-    env:
-      DOCKER_HOST: tcp://docker:2375
+    # Job containers get the host docker.sock automounted via the runner's
+    # own config.yaml (container.docker_host: automount), not anything set
+    # here -- see docs/services/forgejo.md in the homeserver repo. An
+    # isolated Docker-in-Docker sidecar was tried and reverted there: it
+    # broke this job specifically, since docker build/push would have needed
+    # a THIRD level of nested DinD, which crashed on startup every time.
     # Self-hosted registry (Forgejo's built-in PyPI index + container
     # registry, see docs/services/forgejo.md) -- everything lands on our own
     # disk, no third-party account, no quota.
